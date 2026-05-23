@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Stellar Invest Academy</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -394,13 +395,14 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 </div>
 
 <script>
-var DB=(function(){
-  var KEY='sia_v1';
-  var def={
-    managers:[{name:'Admin',team:[]}],
-    currentManager:null,
-    conseillers:[],
-    evals:[],
+// ══ SUPABASE ══
+var _sb = supabase.createClient('https://bkrzqitbzedmuwvuqxth.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrcnpxaXRiemVkbXV3dnVxeHRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzQ5MDYsImV4cCI6MjA5NDk1MDkwNn0.uTimyUG9_q-MiErZ3wjYOU0Xl4Vzj1ZkVg4i5X6_qBY');
+
+// ══ STATE (config locale, données depuis Supabase) ══
+var DB = (function(){
+  var KEY = 'sia_config';
+  var defConfig = {
+    currentManager: null,
     weights:{phoning:{tech:20,com:55,pro:25},d0:{tech:30,com:40,pro:30},d1scpi:{tech:45,com:35,pro:20},d1asset:{tech:40,com:35,pro:25},d1pe:{tech:40,com:40,pro:20},d2:{tech:20,com:60,pro:20}},
     rdvBlocs:{
       phoning:{label:'Phoning',tech:['Pitch version 1','Pitch version 2','Qualification du prospect'],com:['Accroche téléphonique','Gestion des contre-arguments','Prise de rendez-vous'],pro:['Ton & dynamisme','Posture téléphonique','Naturel & fluidité']},
@@ -419,16 +421,52 @@ var DB=(function(){
       d2:["J'ai besoin de réfléchir","Mon conjoint doit valider","C'est beaucoup d'argent","Je veux consulter ailleurs","Pas le bon moment","Montrez-moi les chiffres encore"]
     }
   };
-  function load(){try{var s=localStorage.getItem(KEY);return s?JSON.parse(s):JSON.parse(JSON.stringify(def))}catch(e){return JSON.parse(JSON.stringify(def))}}
-  function save(d){try{localStorage.setItem(KEY,JSON.stringify(d))}catch(e){}}
-  var data=load();
-  return{
-    get:function(){return data},
-    save:function(){save(data)},
-    rdv:function(){return data.rdvBlocs},
-    reset:function(){data=JSON.parse(JSON.stringify(def));save(data)}
+  function loadConfig(){try{var s=localStorage.getItem(KEY);var c=s?JSON.parse(s):JSON.parse(JSON.stringify(defConfig));return c}catch(e){return JSON.parse(JSON.stringify(defConfig))}}
+  function saveConfig(c){try{localStorage.setItem(KEY,JSON.stringify(c))}catch(e){}}
+  var config = loadConfig();
+  // Data from Supabase
+  var _data = {conseillers:[], evals:[], managers:[]};
+  return {
+    get: function(){
+      return {
+        currentManager: config.currentManager,
+        managers: _data.managers,
+        conseillers: _data.conseillers,
+        evals: _data.evals,
+        weights: config.weights,
+        rdvBlocs: config.rdvBlocs,
+        objections: config.objections
+      };
+    },
+    save: function(){ saveConfig(config); },
+    rdv: function(){ return config.rdvBlocs; },
+    setCurrentManager: function(n){ config.currentManager=n; saveConfig(config); },
+    setData: function(d){ _data=d; },
+    updateWeights: function(w){ config.weights=w; saveConfig(config); },
+    updateRdvBlocs: function(b){ config.rdvBlocs=b; saveConfig(config); },
+    updateObjections: function(o){ config.objections=o; saveConfig(config); }
   };
 })();
+
+// ══ SUPABASE LOAD ══
+async function sbLoad(){
+  try{
+    var r = await Promise.all([
+      _sb.from('conseillers').select('*').order('name'),
+      _sb.from('evaluations').select('*').order('eval_date',{ascending:false}),
+      _sb.from('managers').select('*').order('name')
+    ]);
+    if(r[0].error) throw r[0].error;
+    DB.setData({conseillers:r[0].data||[], evals:r[1].data||[], managers:r[2].data||[]});
+    var dot=document.getElementById('sync-dot');if(dot)dot.style.display='block';
+    return true;
+  }catch(e){console.error('Supabase error:',e);return false}
+}
+function sbRealtime(){
+  _sb.channel('db-changes').on('postgres_changes',{event:'*',schema:'public'},function(){
+    sbLoad().then(function(){renderDash();});
+  }).subscribe();
+}
 
 var QVAL={excellent:100,bon:75,moyen:50,faible:25,absent:0};
 var QLBL={excellent:'Excellent',bon:'Bon',moyen:'Moyen',faible:'Faible',absent:'Absent'};
@@ -448,10 +486,10 @@ function fd(d){if(!d)return'—';var p=d.split('-');return p[2]+'/'+p[1]+'/'+p[0
 function uid(){return'x'+Date.now().toString(36)+Math.random().toString(36).slice(2,5)}
 function daysSince(ds){if(!ds)return 9999;return Math.floor((new Date()-new Date(ds))/(864e5))}
 function calcAnc(ds){if(!ds)return'';var m=Math.floor((new Date()-new Date(ds))/(864e5*30.5));if(m<1)return'< 1 mois';if(m<12)return m+' mois';var y=Math.floor(m/12);var rm=m%12;return y+'an'+(y>1?'s':'')+(rm?' '+rm+'m':'')}
-function lastScore(cid){var evs=DB.get().evals.filter(function(e){return e.consId===cid}).sort(function(a,b){return b.date.localeCompare(a.date)});return evs.length?evs[0].global:null}
-function lastDate(cid){var evs=DB.get().evals.filter(function(e){return e.consId===cid}).sort(function(a,b){return b.date.localeCompare(a.date)});return evs.length?evs[0].date:null}
-function trendVal(cid){var evs=DB.get().evals.filter(function(e){return e.consId===cid}).sort(function(a,b){return b.date.localeCompare(a.date)});return evs.length>=2?evs[0].global-evs[1].global:null}
-function scoreByRdv(cid){var res={};DB.get().evals.filter(function(e){return e.consId===cid}).forEach(function(e){if(!res[e.rdv])res[e.rdv]={sum:0,n:0};res[e.rdv].sum+=e.global;res[e.rdv].n++});var out={};Object.keys(res).forEach(function(k){out[k]={avg:Math.round(res[k].sum/res[k].n),n:res[k].n}});return out}
+function lastScore(cid){var evs=DB.get().evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return b.eval_date.localeCompare(a.eval_date)});return evs.length?evs[0].score_global:null}
+function lastDate(cid){var evs=DB.get().evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return b.eval_date.localeCompare(a.eval_date)});return evs.length?evs[0].eval_date:null}
+function trendVal(cid){var evs=DB.get().evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return b.eval_date.localeCompare(a.eval_date)});return evs.length>=2?evs[0].score_global-evs[1].score_global:null}
+function scoreByRdv(cid){var res={};DB.get().evals.filter(function(e){return e.cons_id===cid}).forEach(function(e){if(!res[e.rdv])res[e.rdv]={sum:0,n:0};res[e.rdv].sum+=e.score_global;res[e.rdv].n++});var out={};Object.keys(res).forEach(function(k){out[k]={avg:Math.round(res[k].sum/res[k].n),n:res[k].n}});return out}
 function evalStatus(c){var freq=c.freq||14;var d=daysSince(lastDate(c.id));if(d===9999)return{cls:'sp-new',lbl:'Non évalué',late:true};if(d<=freq)return{cls:'sp-ok',lbl:'À jour ('+d+'j)',late:false};if(d<=freq*1.5)return{cls:'sp-due',lbl:'Bientôt ('+d+'j)',late:false};return{cls:'sp-late',lbl:'En retard — '+d+'j',late:true}}
 
 function go(p){
@@ -485,8 +523,8 @@ function renderMgrList(){
       +(a?'<span class="badge lv-elite" style="margin-left:auto">Actif</span>':'')+'</div>';
   }).join('');
 }
-function selectMgr(n){var d=DB.get();d.currentManager=n;DB.save();document.getElementById('mgr-dot').textContent=n[0];document.getElementById('mgr-name').textContent=n;closeModal('mod-mgr');renderDash()}
-function addMgrFromModal(){var n=document.getElementById('mod-mgr-inp').value.trim();if(!n)return;var d=DB.get();if(!d.managers.find(function(m){return m.name===n}))d.managers.push({name:n,team:[]});DB.save();selectMgr(n);document.getElementById('mod-mgr-inp').value=''}
+function selectMgr(n){DB.setCurrentManager(n);document.getElementById('mgr-dot').textContent=n[0];document.getElementById('mgr-name').textContent=n;closeModal('mod-mgr');renderDash()}
+async function addMgrFromModal(){var n=document.getElementById('mod-mgr-inp').value.trim();if(!n)return;await _sb.from('managers').insert({name:n});await sbLoad();selectMgr(n);document.getElementById('mod-mgr-inp').value='';renderMgrList();}
 function initMgr(){var d=DB.get();if(d.currentManager){document.getElementById('mgr-dot').textContent=d.currentManager[0];document.getElementById('mgr-name').textContent=d.currentManager}else{openMgrModal()}}
 
 /* DASHBOARD */
@@ -529,14 +567,14 @@ function renderDash(){
   }).join('')||'<div class="fs12 mu">Aucun conseiller — ajoutez-en dans Équipe.</div>';
   var last=[].concat(d.evals).sort(function(a,b){return b.date.localeCompare(a.date)}).slice(0,7);
   document.getElementById('dash-evals').innerHTML=last.map(function(e){
-    var c=d.conseillers.find(function(x){return x.id===e.consId});if(!c)return'';var l=lv(e.global);
+    var c=d.conseillers.find(function(x){return x.id===e.cons_id});if(!c)return'';var l=lv(e.score_global);
     return'<tr onclick="showDrillModal(\''+e.id+'\')">'
       +'<td><div class="flex ac gap1"><div class="ava" style="width:26px;height:26px;font-size:10px">'+ini(c.name)+'</div>'+c.name+'</div></td>'
-      +'<td class="fs11 mu">'+DB.rdv()[e.rdv].label+'</td><td class="fs11">'+e.manager+'</td><td class="fs11 mu">'+fd(e.date)+'</td>'
+      +'<td class="fs11 mu">'+DB.rdv()[e.rdv].label+'</td><td class="fs11">'+e.manager+'</td><td class="fs11 mu">'+fd(e.eval_date)+'</td>'
       +'<td style="font-weight:700;color:'+sc(e.scores.tech)+'">'+e.scores.tech+'</td>'
       +'<td style="font-weight:700;color:'+sc(e.scores.com)+'">'+e.scores.com+'</td>'
       +'<td style="font-weight:700;color:'+sc(e.scores.pro)+'">'+e.scores.pro+'</td>'
-      +'<td><strong style="font-size:15px;color:'+l.c+'">'+e.global+'</strong></td>'
+      +'<td><strong style="font-size:15px;color:'+l.c+'">'+e.score_global+'</strong></td>'
       +'<td><span class="badge '+l.cls+'">'+l.lbl+'</span></td></tr>';
   }).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--mu);padding:20px">Aucune évaluation — commencez par en créer une.</td></tr>';
 }
@@ -547,7 +585,7 @@ function renderEquipe(){
   if(!d.conseillers.length){document.getElementById('team-cards').innerHTML='<div class="card" style="text-align:center;padding:40px;color:var(--mu)"><div style="font-size:32px;margin-bottom:12px">👥</div><div class="fs12">Aucun conseiller encore.<br>Cliquez "+ Ajouter un conseiller" pour commencer.</div></div>';return}
   document.getElementById('team-cards').innerHTML=d.conseillers.map(function(c){
     var s=lastScore(c.id);var l=s!==null?lv(s):{cls:'',lbl:'—',c:'#ccc'};
-    var byRdv=scoreByRdv(c.id);var t=trendVal(c.id);var st=evalStatus(c);var anc=calcAnc(c.dateEntree);
+    var byRdv=scoreByRdv(c.id);var t=trendVal(c.id);var st=evalStatus(c);var anc=calcAnc(c.date_entree);
     return'<div class="card">'
       +'<div class="flex ac gap2 mb2">'
       +'<div class="ava ava-lg">'+ini(c.name)+'</div>'
@@ -570,7 +608,7 @@ function openConsModal(id){
   var d=DB.get();var c=(id===-1||id==='-1')?null:d.conseillers.find(function(x){return x.id===id});
   document.getElementById('mod-cons-title').textContent=c?'Modifier — '+c.name:'Nouveau conseiller';
   document.getElementById('cf-name').value=c?c.name:'';
-  document.getElementById('cf-date').value=c?(c.dateEntree||''):'';
+  document.getElementById('cf-date').value=c?(c.date_entree||''):'';
   document.getElementById('cf-obj').value=c?(c.objectif||''):'';
   var freq=c?(c.freq||14):14;
   document.getElementById('cf-freq').value=freq;
@@ -587,14 +625,14 @@ function saveCons(){
   else{var idx=d.conseillers.findIndex(function(c){return c.id===eid});if(idx>=0){obj.id=eid;obj.createdAt=d.conseillers[idx].createdAt;d.conseillers[idx]=obj}}
   DB.save();closeModal('mod-cons');renderEquipe();
 }
-function delCons(id){var d=DB.get();var c=d.conseillers.find(function(x){return x.id===id});if(!c||!confirm('Supprimer '+c.name+' ?'))return;d.conseillers=d.conseillers.filter(function(x){return x.id!==id});d.evals=d.evals.filter(function(e){return e.consId!==id});DB.save();renderEquipe()}
+async function delCons(id){var d=DB.get();var c=d.conseillers.find(function(x){return x.id===id});if(!c||!confirm('Supprimer '+c.name+' ?'))return;await _sb.from('conseillers').delete().eq('id',id);await sbLoad();renderEquipe();}
 
 /* FICHE */
 var ficheChart=null;
 function openFiche(cid){
   go('fiche');var d=DB.get();var c=d.conseillers.find(function(x){return x.id===cid});if(!c)return;
   document.getElementById('fiche-title').textContent=c.name;
-  var evs=d.evals.filter(function(e){return e.consId===cid}).sort(function(a,b){return a.date.localeCompare(b.date)});
+  var evs=d.evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return a.date.localeCompare(b.date)});
   var s=evs.length?evs[evs.length-1].global:null;var l=s!==null?lv(s):{cls:'',lbl:'—',c:'#ccc'};
   var byRdv=scoreByRdv(cid);
   var avgT=evs.length?Math.round(evs.reduce(function(a,e){return a+e.scores.tech},0)/evs.length):0;
@@ -603,11 +641,11 @@ function openFiche(cid){
   var oc={};var oBad={};
   evs.forEach(function(e){(e.objs||[]).forEach(function(o){var t=o.text||o;oc[t]=(oc[t]||0)+1;if(o.ok===false)oBad[t]=(oBad[t]||0)+1})});
   var topObjs=Object.keys(oc).sort(function(a,b){return oc[b]-oc[a]}).slice(0,5);
-  var anc=calcAnc(c.dateEntree);var st=evalStatus(c);
+  var anc=calcAnc(c.date_entree);var st=evalStatus(c);
   var html='<div class="g2 gap2 mb3" style="align-items:start">'
     +'<div><div class="card mb2"><div class="flex ac gap2 mb2"><div class="ava ava-lg">'+ini(c.name)+'</div>'
     +'<div class="f1"><div class="flex jb ac"><strong style="font-size:17px">'+c.name+'</strong>'+(s!==null?'<span class="badge '+l.cls+'">'+l.lbl+'</span>':'')+'</div>'
-    +(c.dateEntree?'<div class="fs11 mu mt1">Entré le '+fd(c.dateEntree)+(anc?' · '+anc:'')+'</div>':'')
+    +(c.date_entree?'<div class="fs11 mu mt1">Entré le '+fd(c.date_entree)+(anc?' · '+anc:'')+'</div>':'')
     +(c.objectif?'<div class="fs11 mt1" style="color:var(--g)">🎯 '+c.objectif+'</div>':'')+'</div>'
     +(s!==null?'<div style="text-align:center"><strong style="font-size:34px;color:'+l.c+'">'+s+'</strong><div class="fs11 mu">/100</div></div>':'')+'</div>'
     +'<div class="flex ac gap2 mb2"><span class="sp '+st.cls+'">'+st.lbl+'</span><span class="freq-badge">🔄 tous les '+c.freq+'j</span></div>'
@@ -622,8 +660,8 @@ function openFiche(cid){
     +'<div><div class="card mb2"><div class="card-title">Progression</div><div style="position:relative;height:210px"><canvas id="cv-fiche"></canvas></div></div>'
     +'<div class="card"><div class="card-title">Historique ('+evs.length+')</div>'
     +(!evs.length?'<div class="fs12 mu" style="padding:8px 0">Aucune évaluation enregistrée.</div>'
-    :[].concat(evs).reverse().map(function(e){var le=lv(e.global);return'<div class="drill-hr" onclick="showDrillModal(\''+e.id+'\')">'
-      +'<div class="flex ac gap2"><span class="fs11 mu" style="min-width:52px">'+fd(e.date)+'</span><span class="badge '+le.cls+'">'+le.lbl+'</span><strong style="color:'+le.c+'">'+e.global+'</strong><span class="fs11 mu f1">'+DB.rdv()[e.rdv].label+'</span><span class="fs11 mu">'+e.manager+'</span><span class="fs11" style="color:var(--g)">Détail →</span></div>'
+    :[].concat(evs).reverse().map(function(e){var le=lv(e.score_global);return'<div class="drill-hr" onclick="showDrillModal(\''+e.id+'\')">'
+      +'<div class="flex ac gap2"><span class="fs11 mu" style="min-width:52px">'+fd(e.eval_date)+'</span><span class="badge '+le.cls+'">'+le.lbl+'</span><strong style="color:'+le.c+'">'+e.score_global+'</strong><span class="fs11 mu f1">'+DB.rdv()[e.rdv].label+'</span><span class="fs11 mu">'+e.manager+'</span><span class="fs11" style="color:var(--g)">Détail →</span></div>'
       +(e.synthese?'<div class="fs11 mu mt1" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+e.synthese+'</div>':'')+'</div>'}).join(''))
     +'</div></div></div>';
   document.getElementById('fiche-content').innerHTML=html;
@@ -631,7 +669,7 @@ function openFiche(cid){
     var el=document.getElementById('cv-fiche');if(!el||!evs.length)return;
     if(ficheChart){ficheChart.destroy();ficheChart=null}
     if(typeof Chart==='undefined')return;
-    ficheChart=new Chart(el,{type:'line',data:{labels:evs.map(function(e){return fd(e.date)}),datasets:[{label:'Global',data:evs.map(function(e){return e.global}),borderColor:'#C9A84C',backgroundColor:'rgba(201,168,76,.1)',fill:true,tension:.4,borderWidth:2.5,pointRadius:5,pointBackgroundColor:'#C9A84C'},{label:'Tech.',data:evs.map(function(e){return e.scores.tech}),borderColor:'#2563EB',fill:false,tension:.4,borderWidth:1.5,pointRadius:3,borderDash:[4,3]},{label:'Com.',data:evs.map(function(e){return e.scores.com}),borderColor:'#1B7A4A',fill:false,tension:.4,borderWidth:1.5,pointRadius:3,borderDash:[4,3]},{label:'Pro.',data:evs.map(function(e){return e.scores.pro}),borderColor:'#7C3AED',fill:false,tension:.4,borderWidth:1.5,pointRadius:3,borderDash:[4,3]}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10,padding:10}}},scales:{x:{grid:{display:false},ticks:{font:{size:9}}},y:{min:0,max:100,grid:{color:'rgba(0,0,0,.04)'},ticks:{font:{size:10}}}}}});
+    ficheChart=new Chart(el,{type:'line',data:{labels:evs.map(function(e){return fd(e.eval_date)}),datasets:[{label:'Global',data:evs.map(function(e){return e.score_global}),borderColor:'#C9A84C',backgroundColor:'rgba(201,168,76,.1)',fill:true,tension:.4,borderWidth:2.5,pointRadius:5,pointBackgroundColor:'#C9A84C'},{label:'Tech.',data:evs.map(function(e){return e.scores.tech}),borderColor:'#2563EB',fill:false,tension:.4,borderWidth:1.5,pointRadius:3,borderDash:[4,3]},{label:'Com.',data:evs.map(function(e){return e.scores.com}),borderColor:'#1B7A4A',fill:false,tension:.4,borderWidth:1.5,pointRadius:3,borderDash:[4,3]},{label:'Pro.',data:evs.map(function(e){return e.scores.pro}),borderColor:'#7C3AED',fill:false,tension:.4,borderWidth:1.5,pointRadius:3,borderDash:[4,3]}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10,padding:10}}},scales:{x:{grid:{display:false},ticks:{font:{size:9}}},y:{min:0,max:100,grid:{color:'rgba(0,0,0,.04)'},ticks:{font:{size:10}}}}}});
   },80);
 }
 function quickEvalFor(cid){go('eval');setTimeout(function(){var s=document.getElementById('ev-cons');if(s)s.value=cid},50)}
@@ -639,10 +677,10 @@ function quickEvalFor(cid){go('eval');setTimeout(function(){var s=document.getEl
 /* DRILL MODAL */
 function showDrillModal(eid){
   var d=DB.get();var e=d.evals.find(function(x){return x.id===eid});if(!e)return;
-  var c=d.conseillers.find(function(x){return x.id===e.consId});var l=lv(e.global);
-  document.getElementById('drill-title').textContent=(c?c.name:'')+ ' — '+DB.rdv()[e.rdv].label+' ('+fd(e.date)+')';
+  var c=d.conseillers.find(function(x){return x.id===e.cons_id});var l=lv(e.score_global);
+  document.getElementById('drill-title').textContent=(c?c.name:'')+ ' — '+DB.rdv()[e.rdv].label+' ('+fd(e.eval_date)+')';
   var html='<div class="flex ac gap3 mb2" style="padding-bottom:12px;border-bottom:1px solid var(--bd)">'
-    +'<div style="text-align:center"><strong style="font-size:30px;color:'+l.c+'">'+e.global+'</strong><div class="fs10 mu">/100</div></div>'
+    +'<div style="text-align:center"><strong style="font-size:30px;color:'+l.c+'">'+e.score_global+'</strong><div class="fs10 mu">/100</div></div>'
     +'<span class="badge '+l.cls+'">'+l.lbl+'</span><span class="fs11 mu">Par '+e.manager+'</span></div>'
     +'<div class="g3 mb2" style="gap:8px">'
     +[{lbl:'Technique',k:'tech'},{lbl:'Commercial',k:'com'},{lbl:'Pro.',k:'pro'}].map(function(x){var s=e.scores[x.k];return'<div style="text-align:center;padding:8px;background:'+sc(s)+'18;border-radius:var(--r)"><div class="fs10 mu">'+x.lbl+'</div><div style="font-size:20px;font-weight:700;color:'+sc(s)+'">'+s+'</div></div>'}).join('')+'</div>';
@@ -726,14 +764,8 @@ function addObj(){
   if(!d.objections[rdv].includes(val))d.objections[rdv].push(val);
   DB.save();inp.value='';renderObjList(rdv);
 }
-function saveEval(){
-  var d=DB.get();var rdv=document.getElementById('ev-rdv').value;var w=d.weights[rdv];
-  function ds(dim){var v=Object.values(evBlocs[dim]).filter(function(e){return e.q});return v.length?Math.round(v.reduce(function(s,e){return s+QVAL[e.q]},0)/v.length):0}
-  var t=ds('tech'),c=ds('com'),p=ds('pro');var g=Math.round(t*w.tech/100+c*w.com/100+p*w.pro/100);
-  function buildBlocs(dim){return Object.values(evBlocs[dim]).map(function(e){var bid=dim+'_'+e.b.replace(/\W/g,'_');var el=document.getElementById('cmt-'+bid);return{b:e.b,q:e.q,c:el?el.value.trim():''}})}
-  var ev={id:uid(),consId:document.getElementById('ev-cons').value,rdv:rdv,manager:d.currentManager||'Manager',date:document.getElementById('ev-date').value,blocs:{tech:buildBlocs('tech'),com:buildBlocs('com'),pro:buildBlocs('pro')},objs:JSON.parse(JSON.stringify(evObjs)),synthese:document.getElementById('ev-synthese').value.trim(),scores:{tech:t,com:c,pro:p},global:g};
-  d.evals.push(ev);DB.save();
-  var l=lv(g);var cons=d.conseillers.find(function(x){return x.id===ev.consId});
+async function saveEval(){var d=DB.get();var rdv=document.getElementById('ev-rdv').value;var w=d.weights[rdv];function ds(dim){var v=Object.values(evBlocs[dim]).filter(function(e){return e.q});return v.length?Math.round(v.reduce(function(s,e){return s+QVAL[e.q]},0)/v.length):0}var t=ds('tech'),c=ds('com'),p=ds('pro');var g=Math.round(t*w.tech/100+c*w.com/100+p*w.pro/100);function buildBlocs(dim){return Object.values(evBlocs[dim]).map(function(e){var bid=dim+'_'+e.b.replace(/\W/g,'_');var el=document.getElementById('cmt-'+bid);return{b:e.b,q:e.q,c:el?el.value.trim():''}})}var ev={cons_id:document.getElementById('ev-cons').value,rdv:rdv,manager:d.currentManager||'Manager',eval_date:document.getElementById('ev-date').value,blocs_tech:buildBlocs('tech'),blocs_com:buildBlocs('com'),blocs_pro:buildBlocs('pro'),objs:JSON.parse(JSON.stringify(evObjs)),synthese:document.getElementById('ev-synthese').value.trim(),score_tech:t,score_com:c,score_pro:p,score_global:g};var res=await _sb.from('evaluations').insert(ev);if(res.error){alert('Erreur: '+res.error.message);return}await sbLoad();
+  var l=lv(g);var cons=d.conseillers.find(function(x){return x.id===ev.cons_id});
   var weak=[];if(t<50)weak.push({lbl:'Technique',s:t,a:'Révision des blocs Absent et Faible. Formation dédiée.'});if(c<50)weak.push({lbl:'Commercial',s:c,a:'Drills objections + jeux de rôle enregistrés.'});if(p<50)weak.push({lbl:'Professionnalisme',s:p,a:'Enregistrement vidéo. Posture, structure, vocabulaire.'});
   var failObjs=evObjs.filter(function(o){return o.ok===false});
   document.getElementById('eval-result').innerHTML=
@@ -745,7 +777,7 @@ function saveEval(){
     +'<div class="g3 mb2" style="gap:10px">'+[{lbl:'Technique',s:t},{lbl:'Commercial',s:c},{lbl:'Professionnalisme',s:p}].map(function(x){return'<div style="text-align:center;padding:10px;background:'+sc(x.s)+'15;border-radius:var(--r)"><div class="fs11 mu">'+x.lbl+'</div><div style="font-size:22px;font-weight:700;color:'+sc(x.s)+'">'+x.s+'</div></div>'}).join('')+'</div>'
     +(weak.length?'<div class="sep">Plan d\'action</div>'+weak.map(function(w2){return'<div class="drill-card"><div class="drill-title">'+w2.lbl+' ('+w2.s+'/100)</div><div class="drill-body">'+w2.a+'</div></div>'}).join(''):'<div class="al al-ok">Bon niveau — continuer la progression.</div>')
     +(failObjs.length?'<div class="sep">Objections à retravailler (✘)</div>'+failObjs.map(function(o){return'<div class="al al-warn">✘ <strong>'+o.text+'</strong>'+(o.note?' — <em>'+o.note+'</em>':'')+'</div>'}).join(''):'')
-    +'<div class="flex gap2 mt2">'+(cons?'<button class="btn btn-n" onclick="openFiche(\''+ev.consId+'\')">Voir la fiche →</button>':'')+'<button class="btn btn-o" onclick="initEval()">Nouvelle évaluation</button><button class="btn btn-o" onclick="go(\'dash\')">Dashboard</button></div>';
+    +'<div class="flex gap2 mt2">'+(cons?'<button class="btn btn-n" onclick="openFiche(\''+ev.cons_id+'\')">Voir la fiche →</button>':'')+'<button class="btn btn-o" onclick="initEval()">Nouvelle évaluation</button><button class="btn btn-o" onclick="go(\'dash\')">Dashboard</button></div>';
   hide('eval-s2');show('eval-s3');
 }
 
@@ -823,7 +855,7 @@ function renderMgrSettings(){
     +d.managers.map(function(m){return'<div class="flex ac gap2 mb1" style="padding:7px 10px;background:var(--ow);border-radius:var(--r)"><div class="mgr-dot" style="width:28px;height:28px;font-size:11px">'+m.name[0]+'</div><span class="f1 fs12 bold">'+m.name+'</span><button class="btn btn-r btn-sm" onclick="removeMgr(\''+m.name+'\')">Supprimer</button></div>'}).join('')
     +'<div class="flex gap1 mt2"><input type="text" id="mgr-new" placeholder="Nom du manager" style="flex:1"><button class="btn btn-g btn-sm" onclick="addMgrSettings()">Ajouter</button></div></div>';
 }
-function addMgrSettings(){var n=document.getElementById('mgr-new').value.trim();if(!n)return;var d=DB.get();if(!d.managers.find(function(m){return m.name===n}))d.managers.push({name:n,team:[]});DB.save();document.getElementById('mgr-new').value='';renderMgrSettings()}
+async function addMgrSettings(){var n=document.getElementById('mgr-new').value.trim();if(!n)return;await _sb.from('managers').insert({name:n});await sbLoad();document.getElementById('mgr-new').value='';renderMgrSettings();}
 function removeMgr(name){var d=DB.get();if(d.managers.length<=1){alert('Il faut au moins un manager.');return}d.managers=d.managers.filter(function(m){return m.name!==name});if(d.currentManager===name)d.currentManager=null;DB.save();renderMgrSettings();initMgr()}
 
 function renderWeightsEditor(){
@@ -843,8 +875,12 @@ function addObjBase(rdv){var v=document.getElementById('oi-'+rdv).value.trim();i
 function removeObjBase(rdv,o){var d=DB.get();d.objections[rdv]=(d.objections[rdv]||[]).filter(function(x){return x!==o});DB.save();renderObjSettings()}
 
 /* INIT */
-initMgr();
-renderDash();
+async function init(){
+  var ok = await sbLoad();
+  if(ok){sbRealtime();initMgr();renderDash();}
+  else{document.getElementById('p-dash').innerHTML='<div style="text-align:center;padding:40px;color:#8B1515"><div style="font-size:32px">⚠️</div><div>Impossible de se connecter à Supabase.<br>Vérifiez votre connexion internet.</div></div>';}
+}
+init();
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 </body>
