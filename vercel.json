@@ -1,5 +1,5 @@
 {
   "rewrites": [
-    { "source": "/(.*)", "destination": "/stellar-invest-academy.html" }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
