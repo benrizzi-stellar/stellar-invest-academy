@@ -599,13 +599,15 @@ function openConsModal(id){
   document.getElementById('mod-cons').classList.remove('hidden');
   setTimeout(function(){document.getElementById('cf-name').focus()},100);
 }
-function saveCons(){
+async function saveCons(){
   var name=document.getElementById('cf-name').value.trim();if(!name){alert('Le nom est obligatoire.');return}
-  var d=DB.get();var eid=document.getElementById('mod-cons').dataset.editId;
-  var obj={name:name,dateEntree:document.getElementById('cf-date').value,objectif:document.getElementById('cf-obj').value.trim(),freq:parseInt(document.getElementById('cf-freq').value)||14};
-  if(eid===-1||eid==='-1'){obj.id=uid();obj.createdAt=new Date().toISOString().split('T')[0];d.conseillers.push(obj)}
-  else{var idx=d.conseillers.findIndex(function(c){return c.id===eid});if(idx>=0){obj.id=eid;obj.createdAt=d.conseillers[idx].createdAt;d.conseillers[idx]=obj}}
-  DB.save();closeModal('mod-cons');renderEquipe();
+  var obj={name:name,date_entree:document.getElementById('cf-date').value||null,objectif:document.getElementById('cf-obj').value.trim(),freq:parseInt(document.getElementById('cf-freq').value)||14};
+  var eid=document.getElementById('mod-cons').dataset.editId;
+  var res;
+  if(eid===-1||eid==='-1'){res=await _sb.from('conseillers').insert(obj);}
+  else{res=await _sb.from('conseillers').update(obj).eq('id',eid);}
+  if(res.error){alert('Erreur Supabase: '+res.error.message);return}
+  closeModal('mod-cons');await sbLoad();renderEquipe();
 }
 async function delCons(id){
   var d=DB.get();var c=d.conseillers.find(function(x){return x.id===id});
