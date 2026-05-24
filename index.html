@@ -242,7 +242,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div id="eval-s1">
     <div class="card mb2">
       <div class="sep">Configuration</div>
-      <div class="g3 gap2">
+      <div class="g2 gap2" style="margin-bottom:12px">
         <div><label class="lbl">Conseiller</label><select id="ev-cons"></select></div>
         <div><label class="lbl">Type de RDV</label>
           <select id="ev-rdv" onchange="onRdvChange()">
@@ -254,6 +254,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
             <option value="d2">🤝 D2 — Closing</option>
           </select></div>
         <div><label class="lbl">Date</label><input type="date" id="ev-date"></div>
+        <div><label class="lbl">Type d'évaluation</label><select id="ev-type"><option value="Drill">🎯 Drill</option><option value="Écoute">👂 Écoute</option><option value="Oral de formation">🎤 Oral de formation</option></select></div>
       </div>
     </div>
     <div class="card mb2">
@@ -398,9 +399,13 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 <script>
 var _sb = supabase.createClient('https://bkrzqitbzedmuwvuqxth.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrcnpxaXRiemVkbXV3dnVxeHRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzQ5MDYsImV4cCI6MjA5NDk1MDkwNn0.uTimyUG9_q-MiErZ3wjYOU0Xl4Vzj1ZkVg4i5X6_qBY');
 var _state = {conseillers:[],evals:[],managers:[]};
+var ADMIN_NAME='Benjamin Rizzi';
+var ADMIN_HASH='benrizzi';
+var _sessionLocked=false;
 var _config = (function(){
   var K='sia_cfg';
   var def={currentManager:null,
+    evalTypes:['Drill','Écoute','Oral de formation'],
     weights:{phoning:{tech:20,com:55,pro:25},d0:{tech:30,com:40,pro:30},d1scpi:{tech:45,com:35,pro:20},d1asset:{tech:40,com:35,pro:25},d1pe:{tech:40,com:40,pro:20},d2:{tech:20,com:60,pro:20}},
     rdvBlocs:{
       phoning:{label:'Phoning',tech:['Pitch version 1','Pitch version 2','Qualification du prospect'],com:['Accroche téléphonique','Gestion des contre-arguments','Prise de rendez-vous'],pro:['Ton & dynamisme','Posture téléphonique','Naturel & fluidité']},
@@ -423,6 +428,21 @@ var _config = (function(){
 })();
 function _saveCfg(){try{localStorage.setItem('sia_cfg',JSON.stringify(_config))}catch(e){}}
 
+function isAdmin(){return _config.currentManager===ADMIN_NAME;}
+function canEdit(){return isAdmin();}
+function getMyConseillers(){
+  if(isAdmin())return _state.conseillers;
+  var mgr=_state.managers.find(function(m){return m.name===_config.currentManager});
+  if(!mgr)return[];
+  return _state.conseillers.filter(function(c){
+    return mgr.team&&mgr.team.indexOf(c.id)>=0;
+  });
+}
+function getMyEvals(){
+  if(isAdmin())return _state.evals;
+  var mine=getMyConseillers().map(function(c){return c.id});
+  return _state.evals.filter(function(e){return mine.indexOf(e.cons_id)>=0});
+}
 var DB={
   get:function(){return{currentManager:_config.currentManager,managers:_state.managers,conseillers:_state.conseillers,evals:_state.evals,weights:_config.weights,rdvBlocs:_config.rdvBlocs,objections:_config.objections}},
   save:function(){_saveCfg()},
@@ -476,18 +496,22 @@ function scoreByRdv(cid){var res={};DB.get().evals.filter(function(e){return e.c
 function evalStatus(c){var freq=c.freq||14;var d=daysSince(lastDate(c.id));if(d===9999)return{cls:'sp-new',lbl:'Non évalué',late:true};if(d<=freq)return{cls:'sp-ok',lbl:'À jour ('+d+'j)',late:false};if(d<=freq*1.5)return{cls:'sp-due',lbl:'Bientôt ('+d+'j)',late:false};return{cls:'sp-late',lbl:'En retard — '+d+'j',late:true}}
 
 function go(p){
+  // Block manager from settings
+  if(p==='settings'&&!isAdmin()){
+    toast('Accès réservé à l\'administrateur',false);
+    return;
+  }
+  currentPage=p;
   document.querySelectorAll('.panel').forEach(function(x){x.classList.remove('on')});
   document.querySelectorAll('.tnb,.sb-btn').forEach(function(b){b.classList.remove('on')});
   document.getElementById('p-'+p).classList.add('on');
-  var lb={dash:'Dashboard',equipe:'Équipe',eval:'Évaluation',settings:'Paramètres',sync:'Export / Import'};
-  var lbl=lb[p]||'';
-  document.querySelectorAll('.tnb').forEach(function(b){if(b.textContent.trim()===lbl)b.classList.add('on')});
-  document.querySelectorAll('.sb-btn').forEach(function(b){if(b.textContent.trim()===lbl)b.classList.add('on')});
+  var lb={dash:'Dashboard',equipe:'Équipe',eval:'Évaluation',settings:'Paramètres'};
+  document.querySelectorAll('.tnb').forEach(function(b){if(b.textContent.trim()===lb[p])b.classList.add('on')});
+  document.querySelectorAll('.sb-btn').forEach(function(b){if(b.textContent.trim()===lb[p])b.classList.add('on')});
   if(p==='dash')renderDash();
   if(p==='equipe')renderEquipe();
   if(p==='eval')initEval();
   if(p==='settings')showTab('blocs',document.querySelector('.seg-b'));
-  if(p==='sync')renderSync();
 }
 function quickEval(t){go('eval');setTimeout(function(){var s=document.getElementById('ev-rdv');if(s){s.value=t;onRdvChange()}},50)}
 function closeModal(id){document.getElementById(id).classList.add('hidden')}
@@ -495,98 +519,143 @@ function show(id){document.getElementById(id).classList.remove('hidden')}
 function hide(id){document.getElementById(id).classList.add('hidden')}
 
 /* MANAGER */
-function openMgrModal(){document.getElementById('mod-mgr').classList.remove('hidden');renderMgrList()}
+function openMgrModal(){
+  if(_sessionLocked){
+    // Manager is locked — show info only
+    alert('Votre session est verrouillée. Rechargez la page pour changer de profil.');
+    return;
+  }
+  document.getElementById('mod-mgr').classList.remove('hidden');
+  renderMgrList();
+}
 function renderMgrList(){
-  var d=DB.get();
-  document.getElementById('mod-mgr-list').innerHTML=d.managers.map(function(m){
-    var a=m.name===d.currentManager;
-    return'<div style="display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--r);background:'+(a?'var(--gp)':'var(--ow)')+';border:1px solid '+(a?'var(--gl)':'transparent')+';cursor:pointer;margin-bottom:6px" onclick="selectMgr(\''+m.name+'\')">'
-      +'<div class="mgr-dot">'+m.name[0]+'</div>'
-      +'<span style="font-size:13px;font-weight:'+(a?700:400)+'">'+m.name+'</span>'
-      +(a?'<span class="badge lv-elite" style="margin-left:auto">Actif</span>':'')+'</div>';
+  var admins=[{name:ADMIN_NAME,isAdmin:true}];
+  var mgrs=(_state.managers||[]).filter(function(m){return m.name!==ADMIN_NAME});
+  var all=admins.concat(mgrs);
+  document.getElementById('mod-mgr-list').innerHTML=all.map(function(m){
+    var a=m.name===_config.currentManager;
+    var isA=m.name===ADMIN_NAME;
+    return'<div style="display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--r);background:'+(a?'var(--gp)':'var(--ow)')+';border:1px solid '+(a?'var(--gl)':'transparent')+';cursor:pointer;margin-bottom:6px" onclick="selectMgr(''+m.name+'')">'
+      +'<div class="mgr-dot" style="background:'+(isA?'#C9A84C':'#2563EB')+'">'+m.name[0]+'</div>'
+      +'<div class="f1"><div style="font-size:13px;font-weight:'+(a?700:400)+'">'+m.name+'</div>'
+      +'<div style="font-size:10px;color:var(--mu)">'+(isA?'👑 Administrateur':'👤 Manager')+'</div></div>'
+      +(a?'<span class="badge lv-elite" style="margin-left:auto">Actif</span>':'')
+      +'</div>';
   }).join('');
 }
 function selectMgr(n){_config.currentManager=n;_saveCfg();document.getElementById('mgr-dot').textContent=n[0];document.getElementById('mgr-name').textContent=n;closeModal('mod-mgr');renderDash()}
-async function addMgrFromModal(){var n=document.getElementById('mod-mgr-inp').value.trim();if(!n)return;var res=await _sb.from('managers').insert({name:n});if(res.error){alert('Erreur: '+res.error.message);return}await sbLoad();selectMgr(n);renderMgrList();document.getElementById('mod-mgr-inp').value='';}
-function initMgr(){var d=DB.get();if(d.currentManager){document.getElementById('mgr-dot').textContent=d.currentManager[0];document.getElementById('mgr-name').textContent=d.currentManager}else{openMgrModal()}}
+async function addMgrFromModal(){var n=document.getElementById('mod-mgr-inp').value.trim();if(!n)return;var res=await _sb.from('managers').insert({name:n,team:[]});if(res.error){alert('Erreur: '+res.error.message);return}await sbLoad();selectMgr(n);renderMgrList();document.getElementById('mod-mgr-inp').value='';}
+function initMgr(){
+  var d=DB.get();
+  if(d.currentManager){
+    document.getElementById('mgr-dot').textContent=d.currentManager[0];
+    document.getElementById('mgr-name').textContent=d.currentManager;
+    var rb=document.getElementById('role-badge');
+    if(rb){rb.style.display='inline';rb.textContent=d.currentManager===ADMIN_NAME?'ADMIN':'MANAGER';}
+    if(d.currentManager!==ADMIN_NAME)_sessionLocked=true;
+  }else{openMgrModal();}
+}
 
 /* DASHBOARD */
 function renderDash(){
-  var d=DB.get();
-  var mgr=d.currentManager;
-  document.getElementById('dash-sub').textContent=mgr?'Espace de '+mgr+' — Stellar Invest':'Stellar Invest Academy';
-  var scores=d.conseillers.map(function(c){return lastScore(c.id)}).filter(function(s){return s!==null});
+  var evals=getMyEvals();
+  var conseillers=getMyConseillers();
+  var scores=conseillers.map(function(c){return lastScore(c.id)}).filter(function(s){return s!==null});
   var avg=scores.length?Math.round(scores.reduce(function(a,b){return a+b},0)/scores.length):0;
-  var late=d.conseillers.filter(function(c){return evalStatus(c).late}).length;
-  var ok=d.conseillers.filter(function(c){var st=evalStatus(c);return!st.late&&st.cls==='sp-ok'}).length;
-  var couv=d.conseillers.length?Math.round(ok/d.conseillers.length*100):0;
-  document.getElementById('kpis').innerHTML=[
-    {lbl:'Score moyen',val:avg||'—',sub:scores.length+' conseillers évalués'},
-    {lbl:'Taux de couverture',val:couv+'%',sub:'Évaluations à jour'},
-    {lbl:'Évaluations totales',val:d.evals.length,sub:'Toutes périodes'},
-    {lbl:'En retard',val:late,col:late>0,sub:'Hors fréquence définie'}
+  var late=conseillers.filter(function(c){return evalStatus(c).late}).length;
+  var ok=conseillers.filter(function(c){var st=evalStatus(c);return!st.late&&st.cls==='sp-ok'}).length;
+  var couv=conseillers.length?Math.round(ok/conseillers.length*100):0;
+  var html2='<div class="flex jb ac mb3"><div><div style="font-size:20px;font-weight:700;color:var(--n)">'+
+    (isAdmin()?'Dashboard — Vue globale':'Mon tableau de bord')+
+    '</div><div class="fs12 mu mt1">'+(isAdmin()?'Stellar Invest Academy — Administration':'Votre espace manager')+'</div></div>'+
+    '<button class="btn btn-g" onclick="go('eval')">+ Nouvelle évaluation</button></div>';
+  html2+='<div class="g4 mb3">'+[
+    {lbl:'Score moyen',val:avg||'—',sub:scores.length+' évalués'},
+    {lbl:'Taux couverture',val:couv+'%',sub:'Évaluations à jour'},
+    {lbl:'Évaluations',val:evals.length,sub:'Total'},
+    {lbl:'En retard',val:late,col:late>0,sub:'Action requise'}
   ].map(function(k){return'<div class="kpi"'+(k.col&&k.val>0?' style="background:#7A1515"':'')+'>'+
-    '<div class="kpi-lbl">'+k.lbl+'</div><div class="kpi-val">'+k.val+'</div><div class="kpi-sub">'+k.sub+'</div></div>'}).join('');
+    '<div class="kpi-lbl">'+k.lbl+'</div><div class="kpi-val">'+k.val+'</div><div class="kpi-sub">'+k.sub+'</div></div>'}).join('')+'</div>';
+  
+  // Alerts
   var alerts=[];
-  d.conseillers.forEach(function(c){
+  conseillers.forEach(function(c){
     var st=evalStatus(c);var s=lastScore(c.id);var t=trendVal(c.id);
     if(st.lbl==='Non évalué')alerts.push({cls:'al-info',txt:'<strong>'+c.name+'</strong> — Aucune évaluation encore'});
     else if(st.late&&s!==null&&s<50)alerts.push({cls:'al-crit',txt:'<strong>'+c.name+'</strong> — Score critique ('+s+') + en retard'});
     else if(st.late)alerts.push({cls:'al-warn',txt:'<strong>'+c.name+'</strong> — '+st.lbl});
-    else if(s!==null&&s<50)alerts.push({cls:'al-crit',txt:'<strong>'+c.name+'</strong> — Score critique ('+s+'/100)'});
+    else if(s!==null&&s<50)alerts.push({cls:'al-crit',txt:'<strong>'+c.name+'</strong> — Score critique ('+s+')'});
     else if(t!==null&&t<-5)alerts.push({cls:'al-warn',txt:'<strong>'+c.name+'</strong> — Score en baisse ('+t+' pts)'});
   });
-  if(!alerts.length)alerts.push({cls:'al-ok',txt:'Aucune alerte — toutes les évaluations sont à jour.'});
-  document.getElementById('dash-alerts').innerHTML=alerts.slice(0,5).map(function(a){return'<div class="al '+a.cls+'">'+a.txt+'</div>'}).join('');
-  var sorted=[].concat(d.conseillers).sort(function(a,b){return daysSince(lastDate(b.id))-daysSince(lastDate(a.id))});
-  document.getElementById('dash-planning').innerHTML=sorted.map(function(c){
-    var st=evalStatus(c);
-    return'<div class="flex ac gap2" style="padding:8px 0;border-bottom:1px solid var(--bd)">'
-      +'<div class="ava" style="width:28px;height:28px;font-size:10px">'+ini(c.name)+'</div>'
-      +'<div class="f1"><div class="fs12 bold">'+c.name+'</div><div class="fs10 mu">Tous les '+c.freq+'j</div></div>'
-      +'<span class="sp '+st.cls+'">'+st.lbl+'</span>'
-      +'<button class="btn btn-g btn-sm" style="padding:4px 9px;font-size:10px" onclick="quickEvalFor(\''+c.id+'\')">Évaluer</button>'
-      +'</div>';
-  }).join('')||'<div class="fs12 mu">Aucun conseiller — ajoutez-en dans Équipe.</div>';
-  var last=[].concat(d.evals).sort(function(a,b){return (b.eval_date||"").localeCompare(a.eval_date||"")}).slice(0,7);
-  document.getElementById('dash-evals').innerHTML=last.map(function(e){
-    var c=d.conseillers.find(function(x){return x.id===e.cons_id});if(!c)return'';var l=lv(e.score_global);
-    return'<tr onclick="showDrillModal(\''+e.id+'\')">'
-      +'<td><div class="flex ac gap1"><div class="ava" style="width:26px;height:26px;font-size:10px">'+ini(c.name)+'</div>'+c.name+'</div></td>'
-      +'<td class="fs11 mu">'+DB.rdv()[e.rdv].label+'</td><td class="fs11">'+e.manager+'</td><td class="fs11 mu">'+fd(e.eval_date)+'</td>'
-      +'<td style="font-weight:700;color:'+sc(e.score_tech)+'">'+e.score_tech+'</td>'
-      +'<td style="font-weight:700;color:'+sc(e.score_com)+'">'+e.score_com+'</td>'
-      +'<td style="font-weight:700;color:'+sc(e.score_pro)+'">'+e.score_pro+'</td>'
-      +'<td><strong style="font-size:15px;color:'+l.c+'">'+e.score_global+'</strong></td>'
-      +'<td><span class="badge '+l.cls+'">'+l.lbl+'</span></td></tr>';
-  }).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--mu);padding:20px">Aucune évaluation — commencez par en créer une.</td></tr>';
+  if(!alerts.length)alerts.push({cls:'al-ok',txt:'Aucune alerte — tout est à jour.'});
+  
+  // Planning
+  var sorted=[].concat(conseillers).sort(function(a,b){return daysSince(lastDate(b.id))-daysSince(lastDate(a.id))});
+  var planHtml=sorted.map(function(c){var st=evalStatus(c);return'<div class="flex ac gap2" style="padding:8px 0;border-bottom:1px solid var(--bd)">'+
+    '<div class="ava" style="width:28px;height:28px;font-size:10px">'+ini(c.name)+'</div>'+
+    '<div class="f1"><div class="fs12 bold">'+c.name+'</div><div class="fs10 mu">Tous les '+c.freq+'j</div></div>'+
+    '<span class="sp '+st.cls+'">'+st.lbl+'</span>'+
+    '<button class="btn btn-g btn-sm" style="padding:4px 9px;font-size:10px" onclick="quickEvalFor(''+c.id+'')">Évaluer</button></div>'}).join('')||'<div class="fs12 mu">Aucun conseiller.</div>';
+  
+  // Last evals
+  var lastEvs=[].concat(evals).sort(function(a,b){return(b.eval_date||'').localeCompare(a.eval_date||'')}).slice(0,7);
+  var evHtml=lastEvs.map(function(e){
+    var c=_state.conseillers.find(function(x){return x.id===e.cons_id});if(!c)return'';
+    var l=lv(e.score_global);
+    var typeTag=e.eval_type?'<span style="background:var(--bon-bg);color:var(--bon);border-radius:3px;padding:1px 6px;font-size:9px;font-weight:700;margin-left:4px">'+e.eval_type+'</span>':'';
+    return'<tr onclick="showDrillModal(''+e.id+'')">'+
+      '<td><div class="flex ac gap1"><div class="ava" style="width:26px;height:26px;font-size:10px">'+ini(c.name)+'</div>'+c.name+'</div></td>'+
+      '<td class="fs11 mu">'+DB.rdv()[e.rdv].label+typeTag+'</td>'+
+      '<td class="fs11">'+e.manager+'</td>'+
+      '<td class="fs11 mu">'+fd(e.eval_date||e.date)+'</td>'+
+      '<td style="font-weight:700;color:'+sc(e.score_tech)+'">'+e.score_tech+'</td>'+
+      '<td style="font-weight:700;color:'+sc(e.score_com)+'">'+e.score_com+'</td>'+
+      '<td style="font-weight:700;color:'+sc(e.score_pro)+'">'+e.score_pro+'</td>'+
+      '<td><strong style="font-size:15px;color:'+l.c+'">'+e.score_global+'</strong></td>'+
+      '<td><span class="badge '+l.cls+'">'+l.lbl+'</span></td></tr>';
+  }).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--mu);padding:20px">Aucune évaluation.</td></tr>';
+  
+  document.getElementById('p-dash').innerHTML=html2+
+    '<div class="g2 mb3">'+
+    '<div class="card"><div class="card-title">⚡ Alertes</div>'+alerts.slice(0,5).map(function(a){return'<div class="al '+a.cls+'">'+a.txt+'</div>'}).join('')+'</div>'+
+    '<div class="card"><div class="card-title">📅 Planning</div>'+planHtml+'</div></div>'+
+    '<div class="card"><div class="card-title">Dernières évaluations</div>'+
+    '<table class="tbl"><thead><tr><th>Conseiller</th><th>RDV / Type</th><th>Manager</th><th>Date</th><th>Tech.</th><th>Com.</th><th>Pro.</th><th>Score</th><th>Niveau</th></tr></thead>'+
+    '<tbody>'+evHtml+'</tbody></table></div>';
 }
 
-/* ÉQUIPE */
 function renderEquipe(){
-  var d=DB.get();
-  if(!d.conseillers.length){document.getElementById('team-cards').innerHTML='<div class="card" style="text-align:center;padding:40px;color:var(--mu)"><div style="font-size:32px;margin-bottom:12px">👥</div><div class="fs12">Aucun conseiller encore.<br>Cliquez "+ Ajouter un conseiller" pour commencer.</div></div>';return}
-  document.getElementById('team-cards').innerHTML=d.conseillers.map(function(c){
+  var conseillers=getMyConseillers();
+  var canEditTeam=isAdmin();
+  var hdr='<div class="flex jb ac mb3"><div><div style="font-size:20px;font-weight:700;color:var(--n)">'+
+    (canEditTeam?'Gestion de l\'équipe':'Mon équipe')+'</div>'+
+    '<div class="fs12 mu mt1">'+(canEditTeam?'Administration — tous les conseillers':'Vos conseillers assignés')+'</div></div>'+
+    (canEditTeam?'<button class="btn btn-g" onclick="openConsModal(-1)">+ Ajouter un conseiller</button>':'')+'</div>';
+  if(!conseillers.length){
+    document.getElementById('team-cards').innerHTML='<div class="card" style="text-align:center;padding:40px;color:var(--mu)"><div style="font-size:32px;margin-bottom:12px">👥</div><div class="fs12">Aucun conseiller'+(canEditTeam?'.<br>Cliquez "+ Ajouter un conseiller".':' assigné.<br>Contactez l\'administrateur.')+'</div></div>';
+    document.querySelector('#p-equipe .flex.jb')&&(document.querySelector('#p-equipe .flex.jb').outerHTML=hdr);
+    return;
+  }
+  document.getElementById('team-cards').innerHTML=conseillers.map(function(c){
     var s=lastScore(c.id);var l=s!==null?lv(s):{cls:'',lbl:'—',c:'#ccc'};
     var byRdv=scoreByRdv(c.id);var t=trendVal(c.id);var st=evalStatus(c);var anc=calcAnc(c.date_entree);
-    return'<div class="card">'
-      +'<div class="flex ac gap2 mb2">'
-      +'<div class="ava ava-lg">'+ini(c.name)+'</div>'
-      +'<div class="f1"><div class="flex jb ac"><strong style="font-size:15px">'+c.name+'</strong>'
-      +(s!==null?'<span class="badge '+l.cls+'">'+l.lbl+'</span>':'<span class="fs11 mu">Non évalué</span>')+'</div>'
-      +(anc?'<div class="fs11 mu mt1">'+anc+' dans le cabinet</div>':'')
-      +(c.objectif?'<div class="fs11 mt1" style="color:var(--g)">🎯 '+c.objectif+'</div>':'')+'</div>'
-      +(s!==null?'<div style="text-align:center"><strong style="font-size:24px;color:'+l.c+'">'+s+'</strong><div class="fs10 mu">/100</div>'+(t!==null&&t!==0?'<div style="font-size:10px;color:'+(t>0?'#145F39':'#8B1515')+'">'+( t>0?'▲ +':'▼ ')+t+'</div>':'')+'</div>':'')+'</div>'
-      +'<div class="flex ac gap2 mb2"><span class="sp '+st.cls+'">'+st.lbl+'</span><span class="freq-badge">🔄 '+c.freq+'j</span></div>'
-      +(Object.keys(byRdv).length?'<div class="divider"></div><div class="fs10 bold mu mb1" style="text-transform:uppercase;letter-spacing:.5px">Scores par RDV</div>'
-        +Object.keys(byRdv).map(function(k){var r=byRdv[k];return'<div class="rdv-pill"><span class="fs11">'+DB.rdv()[k].label+'</span><div class="flex ac gap2"><span class="fs10 mu">'+r.n+' éval.</span><strong style="color:'+sc(r.avg)+'">'+r.avg+'</strong><span class="badge '+lv(r.avg).cls+'">'+lv(r.avg).lbl+'</span></div></div>'}).join(''):'')
-      +'<div class="flex gap1 mt2">'
-      +'<button class="btn btn-n btn-sm f1" style="justify-content:center" onclick="openFiche(\''+c.id+'\')">Voir la fiche</button>'
-      +'<button class="btn btn-o btn-sm" onclick="openConsModal(\''+c.id+'\')">Modifier</button>'
-      +'<button class="btn btn-r btn-sm" onclick="delCons(\''+c.id+'\')">✕</button>'
-      +'</div></div>';
+    // Get managers for this conseiller
+    var cMgrs=_state.managers.filter(function(m){return m.team&&m.team.indexOf(c.id)>=0}).map(function(m){return m.name});
+    return'<div class="card">'+
+      '<div class="flex ac gap2 mb2">'+
+      '<div class="ava ava-lg">'+ini(c.name)+'</div>'+
+      '<div class="f1"><div class="flex jb ac"><strong style="font-size:15px">'+c.name+'</strong>'+(s!==null?'<span class="badge '+l.cls+'">'+l.lbl+'</span>':'<span class="fs11 mu">Non évalué</span>')+'</div>'+
+      (anc?'<div class="fs11 mu mt1">'+anc+' dans le cabinet</div>':'')+
+      (c.objectif?'<div class="fs11 mt1" style="color:var(--g)">🎯 '+c.objectif+'</div>':'')+
+      (cMgrs.length?'<div class="fs11 mt1 mu">👤 '+cMgrs.join(', ')+'</div>':'')+'</div>'+
+      (s!==null?'<div style="text-align:center"><strong style="font-size:24px;color:'+l.c+'">'+s+'</strong><div class="fs10 mu">/100</div>'+(t!==null&&t!==0?'<div style="font-size:10px;color:'+(t>0?'#145F39':'#8B1515')+'">'+( t>0?'▲ +':'▼ ')+t+'</div>':'')+'</div>':'')+'</div>'+
+      '<div class="flex ac gap2 mb2"><span class="sp '+st.cls+'">'+st.lbl+'</span><span class="freq-badge">🔄 '+c.freq+'j</span></div>'+
+      (Object.keys(byRdv).length?'<div class="divider"></div><div class="fs10 bold mu mb1" style="text-transform:uppercase;letter-spacing:.5px">Scores par RDV</div>'+Object.keys(byRdv).map(function(k){var r=byRdv[k];return'<div class="rdv-pill"><span class="fs11">'+DB.rdv()[k].label+'</span><div class="flex ac gap2"><span class="fs10 mu">'+r.n+' éval.</span><strong style="color:'+sc(r.avg)+'">'+r.avg+'</strong><span class="badge '+lv(r.avg).cls+'">'+lv(r.avg).lbl+'</span></div></div>'}).join(''):'')+'<div class="flex gap1 mt2">'+
+      '<button class="btn btn-n btn-sm f1" style="justify-content:center" onclick="openFiche(''+c.id+'')">Voir la fiche</button>'+
+      (canEditTeam?'<button class="btn btn-o btn-sm" onclick="openConsModal(''+c.id+'')">Modifier</button><button class="btn btn-r btn-sm" onclick="delCons(''+c.id+'')">✕</button>':'')+'</div></div>';
   }).join('');
 }
+
 function openConsModal(id){
   var d=DB.get();var c=(id===-1||id==='-1')?null:d.conseillers.find(function(x){return x.id===id});
   document.getElementById('mod-cons-title').textContent=c?'Modifier — '+c.name:'Nouveau conseiller';
@@ -621,7 +690,7 @@ async function delCons(id){
 /* FICHE */
 var ficheChart=null;
 function openFiche(cid){
-  go('fiche');var d=DB.get();var c=d.conseillers.find(function(x){return x.id===cid});if(!c)return;
+  go('fiche');var d=DB.get();var c=_state.conseillers.find(function(x){return x.id===cid});if(!c)return;
   document.getElementById('fiche-title').textContent=c.name;
   var evs=d.evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return a.eval_date.localeCompare(b.eval_date)});
   var s=evs.length?evs[evs.length-1].score_global:null;var l=s!==null?lv(s):{cls:'',lbl:'—',c:'#ccc'};
@@ -651,7 +720,7 @@ function openFiche(cid){
     +'<div><div class="card mb2"><div class="card-title">Progression</div><div style="position:relative;height:210px"><canvas id="cv-fiche"></canvas></div></div>'
     +'<div class="card"><div class="card-title">Historique ('+evs.length+')</div>'
     +(!evs.length?'<div class="fs12 mu" style="padding:8px 0">Aucune évaluation enregistrée.</div>'
-    :[].concat(evs).reverse().map(function(e){var le=lv(e.score_global);return'<div class="drill-hr" onclick="showDrillModal(\''+e.id+'\')">'
+    :[].concat(evs).reverse().map(function(e){var le=lv(e.score_global);var typeBadge=e.eval_type?'<span style="background:var(--bon-bg);color:var(--bon);border-radius:3px;padding:1px 6px;font-size:9px;font-weight:700;margin-left:4px">'+e.eval_type+'</span>':'';return'<div class="drill-hr" onclick="showDrillModal(\''+e.id+'\')">'
       +'<div class="flex ac gap2"><span class="fs11 mu" style="min-width:52px">'+fd(e.eval_date)+'</span><span class="badge '+le.cls+'">'+le.lbl+'</span><strong style="color:'+le.c+'">'+e.score_global+'</strong><span class="fs11 mu f1">'+DB.rdv()[e.rdv].label+'</span><span class="fs11 mu">'+e.manager+'</span><span class="fs11" style="color:var(--g)">Détail →</span></div>'
       +(e.synthese?'<div class="fs11 mu mt1" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+e.synthese+'</div>':'')+'</div>'}).join(''))
     +'</div></div></div>';
@@ -813,7 +882,8 @@ async function saveEval(){
   var g=Math.round(t*w.tech/100+c*w.com/100+p*w.pro/100);
   function buildBlocs(dim){return Object.values(evBlocs[dim]).map(function(e){var bid=dim+'_'+e.b.replace(/\W/g,'_');var el=document.getElementById('cmt-'+bid);return{b:e.b,q:e.q,c:el?el.value.trim():''}})}
   var consId=document.getElementById('ev-cons').value;
-  var payload={cons_id:consId,rdv:rdv,manager:d.currentManager||'Manager',eval_date:document.getElementById('ev-date').value,blocs_tech:buildBlocs('tech'),blocs_com:buildBlocs('com'),blocs_pro:buildBlocs('pro'),objs:JSON.parse(JSON.stringify(evObjs)),synthese:document.getElementById('ev-synthese').value.trim(),score_tech:t,score_com:c,score_pro:p,score_global:g};
+  var evalType=document.getElementById('ev-type')?document.getElementById('ev-type').value:'Drill';
+  var payload={cons_id:consId,rdv:rdv,eval_type:evalType,manager:d.currentManager||'Manager',eval_date:document.getElementById('ev-date').value,blocs_tech:buildBlocs('tech'),blocs_com:buildBlocs('com'),blocs_pro:buildBlocs('pro'),objs:JSON.parse(JSON.stringify(evObjs)),synthese:document.getElementById('ev-synthese').value.trim(),score_tech:t,score_com:c,score_pro:p,score_global:g};
   var res=await _sb.from('evaluations').insert(payload);
   if(res.error){alert('Erreur Supabase: '+res.error.message);return}
   await sbLoad();
@@ -886,6 +956,7 @@ function showTab(tab,btn){
   if(tab==='objs')renderObjSettings();
 }
 function renderBlocsEditor(){
+  if(!isAdmin()){document.getElementById('stab-blocs').innerHTML='<div class="al al-warn">Accès réservé à l\'administrateur.</div>';return;}
   var d=DB.get();var rl={phoning:'📞 Phoning',d0:'🔍 D0',d1scpi:'🏢 D1 SCPI',d1asset:'📈 D1 Asset',d1pe:'💼 D1 PE',d2:'🤝 D2'};
   document.getElementById('stab-blocs').innerHTML='<div class="fs11 mu mb2">Modifiez les blocs de chaque RDV. Ces modifications s\'appliquent immédiatement à la grille d\'évaluation.</div>'
     +Object.keys(d.rdvBlocs).map(function(rdv){var meta=d.rdvBlocs[rdv];
@@ -903,15 +974,49 @@ function removeBloc(rdv,dim,i){var d=DB.get();d.rdvBlocs[rdv][dim].splice(i,1);D
 function addBloc(rdv,dim){var d=DB.get();d.rdvBlocs[rdv][dim].push('Nouveau bloc');DB.save();renderBlocsEditor()}
 
 function renderMgrSettings(){
+  if(!isAdmin()){document.getElementById('stab-managers').innerHTML='<div class="al al-warn">Accès réservé à l\'administrateur.</div>';return;}
   var d=DB.get();
-  document.getElementById('stab-managers').innerHTML='<div class="card mb2"><div class="card-title">Managers</div>'
-    +d.managers.map(function(m){return'<div class="flex ac gap2 mb1" style="padding:7px 10px;background:var(--ow);border-radius:var(--r)"><div class="mgr-dot" style="width:28px;height:28px;font-size:11px">'+m.name[0]+'</div><span class="f1 fs12 bold">'+m.name+'</span><button class="btn btn-r btn-sm" onclick="removeMgr(\''+m.name+'\')">Supprimer</button></div>'}).join('')
-    +'<div class="flex gap1 mt2"><input type="text" id="mgr-new" placeholder="Nom du manager" style="flex:1"><button class="btn btn-g btn-sm" onclick="addMgrSettings()">Ajouter</button></div></div>';
+  document.getElementById('stab-managers').innerHTML='<div class="g2" style="align-items:start;gap:12px">'+
+    '<div class="card"><div class="card-title">Managers & équipes assignées</div>'+
+    '<div class="fs11 mu mb2">Un conseiller peut être rattaché à plusieurs managers.</div>'+
+    d.managers.map(function(m,mi){
+      var isA=m.name===ADMIN_NAME;
+      return'<div style="padding:12px 0;border-bottom:1px solid var(--bd)">'+
+        '<div class="flex ac gap2 mb2">'+
+        '<div class="mgr-dot" style="background:'+(isA?'var(--g)':'#2563EB')+'">'+m.name[0]+'</div>'+
+        '<strong class="f1">'+m.name+'</strong>'+
+        '<span style="font-size:10px;color:var(--mu)">'+(isA?'👑 Admin':'👤 Manager')+'</span>'+
+        (!isA?'<button class="btn btn-r btn-sm" onclick="removeMgr(''+m.name+'')">Supprimer</button>':'')+'</div>'+
+        (!isA?'<div class="fs11 mu mb1">Conseillers assignés :</div>'+
+        d.conseillers.map(function(c){
+          var inT=m.team&&m.team.indexOf(c.id)>=0;
+          return'<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin:3px 0">'+
+            '<input type="checkbox"'+(inT?' checked':'')+' style="width:13px;height:13px;margin:0;accent-color:var(--g)" onchange="toggleTeam('+mi+',''+c.id+'',this.checked)">'+
+            c.name+'</label>';
+        }).join(''):'')+'</div>';
+    }).join('')+
+    '<div class="flex gap1 mt2"><input type="text" id="mgr-new" placeholder="Nom du manager" style="flex:1"><button class="btn btn-g btn-sm" onclick="addMgrSettings()">Ajouter</button></div></div>'+
+    '<div class="card"><div class="card-title">Niveaux & seuils</div>'+
+    [
+      {lbl:'Élite',min:87,max:100,cls:'lv-elite'},{lbl:'Très bon',min:75,max:86,cls:'lv-tb'},
+      {lbl:'Bon',min:62,max:74,cls:'lv-bon'},{lbl:'Moyen',min:48,max:61,cls:'lv-moy'},
+      {lbl:'Faible',min:30,max:47,cls:'lv-fai'},{lbl:'Critique',min:0,max:29,cls:'lv-crit'}
+    ].map(function(l){return'<div class="flex ac gap2 mb1"><span class="badge '+l.cls+'" style="min-width:72px;justify-content:center">'+l.lbl+'</span><div style="flex:1;height:4px;background:var(--bd);border-radius:2px;overflow:hidden"><div style="width:'+l.max+'%;height:100%;background:var(--g);border-radius:2px"></div></div><span class="fs11 mu">'+l.min+'–'+l.max+'</span></div>'}).join('')+'</div></div>';
+}
+function toggleTeam(mi,cid,checked){
+  var d=DB.get();
+  if(!d.managers[mi].team)d.managers[mi].team=[];
+  if(checked){if(d.managers[mi].team.indexOf(cid)<0)d.managers[mi].team.push(cid);}
+  else{d.managers[mi].team=d.managers[mi].team.filter(function(x){return x!==cid});}
+  // Save to Supabase
+  _sb.from('managers').update({team:d.managers[mi].team}).eq('name',d.managers[mi].name);
+  _state.managers[mi]=d.managers[mi];
 }
 async function addMgrSettings(){var n=document.getElementById('mgr-new').value.trim();if(!n)return;var res=await _sb.from('managers').insert({name:n});if(res.error){alert('Erreur: '+res.error.message);return}await sbLoad();document.getElementById('mgr-new').value='';renderMgrSettings();}
 function removeMgr(name){var d=DB.get();if(d.managers.length<=1){alert('Il faut au moins un manager.');return}d.managers=d.managers.filter(function(m){return m.name!==name});if(d.currentManager===name)d.currentManager=null;DB.save();renderMgrSettings();initMgr()}
 
 function renderWeightsEditor(){
+  if(!isAdmin()){document.getElementById('stab-weights').innerHTML='<div class="al al-warn">Accès réservé à l\'administrateur.</div>';return;}
   var d=DB.get();var rl={phoning:'Phoning',d0:'D0',d1scpi:'D1 SCPI',d1asset:'D1 Asset',d1pe:'D1 PE',d2:'D2'};
   document.getElementById('stab-weights').innerHTML='<div class="g2">'+Object.keys(d.weights).map(function(rdv){var w=d.weights[rdv];
     return'<div class="card"><strong class="fs12">'+rl[rdv]+'</strong>'+[{k:'tech',lbl:'Technique',c:'#2563EB'},{k:'com',lbl:'Commercial',c:'#1B7A4A'},{k:'pro',lbl:'Pro.',c:'#7C3AED'}].map(function(x){return'<div style="display:grid;grid-template-columns:110px 1fr 40px;align-items:center;gap:8px;margin:8px 0"><span class="fs11" style="color:'+x.c+';font-weight:600">'+x.lbl+'</span><input type="range" min="5" max="80" step="5" value="'+w[x.k]+'" oninput="updateW(\''+rdv+'\',\''+x.k+'\',parseInt(this.value));this.nextSibling.textContent=this.value+\'%\'"><span class="fs11 bold" style="text-align:right">'+w[x.k]+'%</span></div>'}).join('')+'</div>'}).join('')+'</div>';
@@ -919,6 +1024,7 @@ function renderWeightsEditor(){
 function updateW(rdv,k,v){var d=DB.get();d.weights[rdv][k]=v;DB.save()}
 
 function renderObjSettings(){
+  if(!isAdmin()){document.getElementById('stab-objs').innerHTML='<div class="al al-warn">Accès réservé à l\'administrateur.</div>';return;}
   var d=DB.get();var rl={phoning:'Phoning',d0:'D0',d1scpi:'D1 SCPI',d1asset:'D1 Asset',d1pe:'D1 PE',d2:'D2'};
   document.getElementById('stab-objs').innerHTML='<div class="g2">'+Object.keys(d.objections).map(function(rdv){var objs=d.objections[rdv]||[];
     return'<div class="card"><div class="card-title">'+rl[rdv]+'</div>'+objs.map(function(o){return'<div class="flex ac gap1 mb1"><span class="f1 fs11" style="padding:4px 8px;background:var(--ow);border-radius:4px">'+o+'</span><button class="btn btn-r btn-sm" style="padding:3px 7px" onclick="removeObjBase(\''+rdv+'\',\''+o.replace(/'/g,"\\'")+'\')" >✕</button></div>'}).join('')
@@ -928,6 +1034,9 @@ function addObjBase(rdv){var v=document.getElementById('oi-'+rdv).value.trim();i
 function removeObjBase(rdv,o){var d=DB.get();d.objections[rdv]=(d.objections[rdv]||[]).filter(function(x){return x!==o});DB.save();renderObjSettings()}
 
 /* INIT */
+// NOTE: Run this SQL in Supabase if not done:
+// ALTER TABLE managers ADD COLUMN IF NOT EXISTS team jsonb DEFAULT '[]';
+// ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS eval_type text DEFAULT 'Drill';
 async function init(){
   var ok=await sbLoad();
   if(ok){sbRealtime();initMgr();renderDash();}
