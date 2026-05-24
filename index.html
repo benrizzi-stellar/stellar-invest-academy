@@ -796,7 +796,7 @@ function startEval(){
       var bid=dim+'_'+bloc.replace(/\W/g,'_');
       return'<div class="qual-row"><div><div class="qual-name">'+bloc+'</div>'
         +'<textarea class="qual-cmt" id="cmt-'+bid+'" rows="1" placeholder="Commentaire..." oninput="this.style.height=\'auto\';this.style.height=this.scrollHeight+\'px\'"></textarea></div>'
-        +'<div class="qual-btns">'+['excellent','bon','moyen','faible','absent'].map(function(q){return'<button class="qb '+q+'" onclick="setQ(\''+bid+'\',\''+q+'\',\''+dim+'\',\''+bloc.replace(/'/g,"\\'")+'\'this)">'+QLBL[q]+'</button>';}).join('')+'</div></div>';
+        +'<div class="qual-btns">'+['excellent','bon','moyen','faible','absent'].map(function(q){return'<button class="qb '+q+'" onclick="setQ(\''+bid+'\',\''+q+'\',\''+dim+'\',\''+bloc.replace(/'/g,"\\'")+'\',this)">'+QLBL[q]+'</button>';}).join('')+'</div></div>';
     }).join('');
   });
   renderObjList(rdv);document.getElementById('ev-synthese').value='';updateScore();
