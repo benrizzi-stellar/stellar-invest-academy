@@ -395,14 +395,11 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 </div>
 
 <script>
-// ══ SUPABASE ══
-var _sb = supabase.createClient('https://bkrzqitbzedmuwvuqxth.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrcnpxaXRiemVkbXV3dnVxeHRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzQ5MDYsImV4cCI6MjA5NDk1MDkwNn0.uTimyUG9_q-MiErZ3wjYOU0Xl4Vzj1ZkVg4i5X6_qBY');
-
-// ══ STATE (config locale, données depuis Supabase) ══
-var DB = (function(){
-  var KEY = 'sia_config';
-  var defConfig = {
-    currentManager: null,
+var _sb = supabase.createClient('https://bkrzqitbzedmuwvuqxth.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrcnpxaXRiemVkbXV3dnVxeHRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzQ5MDYsImV4cCI6MjA5NDk1MDkwNn0.uTimyUG9_q-MiErZ3wjYOU0Xl4Vzj1ZkVg4i5X6_qBY');
+var _state = {conseillers:[],evals:[],managers:[]};
+var _config = (function(){
+  var K='sia_cfg';
+  var def={currentManager:null,
     weights:{phoning:{tech:20,com:55,pro:25},d0:{tech:30,com:40,pro:30},d1scpi:{tech:45,com:35,pro:20},d1asset:{tech:40,com:35,pro:25},d1pe:{tech:40,com:40,pro:20},d2:{tech:20,com:60,pro:20}},
     rdvBlocs:{
       phoning:{label:'Phoning',tech:['Pitch version 1','Pitch version 2','Qualification du prospect'],com:['Accroche téléphonique','Gestion des contre-arguments','Prise de rendez-vous'],pro:['Ton & dynamisme','Posture téléphonique','Naturel & fluidité']},
@@ -421,49 +418,34 @@ var DB = (function(){
       d2:["J'ai besoin de réfléchir","Mon conjoint doit valider","C'est beaucoup d'argent","Je veux consulter ailleurs","Pas le bon moment","Montrez-moi les chiffres encore"]
     }
   };
-  function loadConfig(){try{var s=localStorage.getItem(KEY);var c=s?JSON.parse(s):JSON.parse(JSON.stringify(defConfig));return c}catch(e){return JSON.parse(JSON.stringify(defConfig))}}
-  function saveConfig(c){try{localStorage.setItem(KEY,JSON.stringify(c))}catch(e){}}
-  var config = loadConfig();
-  // Data from Supabase
-  var _data = {conseillers:[], evals:[], managers:[]};
-  return {
-    get: function(){
-      return {
-        currentManager: config.currentManager,
-        managers: _data.managers,
-        conseillers: _data.conseillers,
-        evals: _data.evals,
-        weights: config.weights,
-        rdvBlocs: config.rdvBlocs,
-        objections: config.objections
-      };
-    },
-    save: function(){ saveConfig(config); },
-    rdv: function(){ return config.rdvBlocs; },
-    setCurrentManager: function(n){ config.currentManager=n; saveConfig(config); },
-    setData: function(d){ _data=d; },
-    updateWeights: function(w){ config.weights=w; saveConfig(config); },
-    updateRdvBlocs: function(b){ config.rdvBlocs=b; saveConfig(config); },
-    updateObjections: function(o){ config.objections=o; saveConfig(config); }
-  };
+  try{var s=localStorage.getItem(K);var c=s?JSON.parse(s):JSON.parse(JSON.stringify(def));return c}catch(e){return JSON.parse(JSON.stringify(def))}
 })();
+function _saveCfg(){try{localStorage.setItem('sia_cfg',JSON.stringify(_config))}catch(e){}}
 
-// ══ SUPABASE LOAD ══
+var DB={
+  get:function(){return{currentManager:_config.currentManager,managers:_state.managers,conseillers:_state.conseillers,evals:_state.evals,weights:_config.weights,rdvBlocs:_config.rdvBlocs,objections:_config.objections}},
+  save:function(){_saveCfg()},
+  rdv:function(){return _config.rdvBlocs}
+};
+
 async function sbLoad(){
   try{
-    var r = await Promise.all([
+    var r=await Promise.all([
       _sb.from('conseillers').select('*').order('name'),
       _sb.from('evaluations').select('*').order('eval_date',{ascending:false}),
       _sb.from('managers').select('*').order('name')
     ]);
-    if(r[0].error) throw r[0].error;
-    DB.setData({conseillers:r[0].data||[], evals:r[1].data||[], managers:r[2].data||[]});
-    var dot=document.getElementById('sync-dot');if(dot)dot.style.display='block';
+    if(r[0].error)throw r[0].error;
+    _state.conseillers=r[0].data||[];
+    _state.evals=r[1].data||[];
+    _state.managers=r[2].data||[];
+    var dot=document.getElementById('sync-dot');
+    if(dot)dot.style.display='block';
     return true;
-  }catch(e){console.error('Supabase error:',e);return false}
+  }catch(e){console.error('Supabase:',e);return false}
 }
 function sbRealtime(){
-  _sb.channel('db-changes').on('postgres_changes',{event:'*',schema:'public'},function(){
+  _sb.channel('db').on('postgres_changes',{event:'*',schema:'public'},function(){
     sbLoad().then(function(){renderDash();});
   }).subscribe();
 }
@@ -486,9 +468,9 @@ function fd(d){if(!d)return'—';var p=d.split('-');return p[2]+'/'+p[1]+'/'+p[0
 function uid(){return'x'+Date.now().toString(36)+Math.random().toString(36).slice(2,5)}
 function daysSince(ds){if(!ds)return 9999;return Math.floor((new Date()-new Date(ds))/(864e5))}
 function calcAnc(ds){if(!ds)return'';var m=Math.floor((new Date()-new Date(ds))/(864e5*30.5));if(m<1)return'< 1 mois';if(m<12)return m+' mois';var y=Math.floor(m/12);var rm=m%12;return y+'an'+(y>1?'s':'')+(rm?' '+rm+'m':'')}
-function lastScore(cid){var evs=DB.get().evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return b.eval_date.localeCompare(a.eval_date)});return evs.length?evs[0].score_global:null}
-function lastDate(cid){var evs=DB.get().evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return b.eval_date.localeCompare(a.eval_date)});return evs.length?evs[0].eval_date:null}
-function trendVal(cid){var evs=DB.get().evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return b.eval_date.localeCompare(a.eval_date)});return evs.length>=2?evs[0].score_global-evs[1].score_global:null}
+function lastScore(cid){var evs=DB.get().evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return b.date.localeCompare(a.date)});return evs.length?evs[0].score_global:null}
+function lastDate(cid){var evs=DB.get().evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return b.date.localeCompare(a.date)});return evs.length?evs[0].date:null}
+function trendVal(cid){var evs=DB.get().evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return b.date.localeCompare(a.date)});return evs.length>=2?evs[0].score_global-evs[1].score_global:null}
 function scoreByRdv(cid){var res={};DB.get().evals.filter(function(e){return e.cons_id===cid}).forEach(function(e){if(!res[e.rdv])res[e.rdv]={sum:0,n:0};res[e.rdv].sum+=e.score_global;res[e.rdv].n++});var out={};Object.keys(res).forEach(function(k){out[k]={avg:Math.round(res[k].sum/res[k].n),n:res[k].n}});return out}
 function evalStatus(c){var freq=c.freq||14;var d=daysSince(lastDate(c.id));if(d===9999)return{cls:'sp-new',lbl:'Non évalué',late:true};if(d<=freq)return{cls:'sp-ok',lbl:'À jour ('+d+'j)',late:false};if(d<=freq*1.5)return{cls:'sp-due',lbl:'Bientôt ('+d+'j)',late:false};return{cls:'sp-late',lbl:'En retard — '+d+'j',late:true}}
 
@@ -523,8 +505,8 @@ function renderMgrList(){
       +(a?'<span class="badge lv-elite" style="margin-left:auto">Actif</span>':'')+'</div>';
   }).join('');
 }
-function selectMgr(n){DB.setCurrentManager(n);document.getElementById('mgr-dot').textContent=n[0];document.getElementById('mgr-name').textContent=n;closeModal('mod-mgr');renderDash()}
-async function addMgrFromModal(){var n=document.getElementById('mod-mgr-inp').value.trim();if(!n)return;await _sb.from('managers').insert({name:n});await sbLoad();selectMgr(n);document.getElementById('mod-mgr-inp').value='';renderMgrList();}
+function selectMgr(n){_config.currentManager=n;_saveCfg();document.getElementById('mgr-dot').textContent=n[0];document.getElementById('mgr-name').textContent=n;closeModal('mod-mgr');renderDash()}
+async function addMgrFromModal(){var n=document.getElementById('mod-mgr-inp').value.trim();if(!n)return;var res=await _sb.from('managers').insert({name:n});if(res.error){alert('Erreur: '+res.error.message);return}await sbLoad();selectMgr(n);renderMgrList();document.getElementById('mod-mgr-inp').value='';}
 function initMgr(){var d=DB.get();if(d.currentManager){document.getElementById('mgr-dot').textContent=d.currentManager[0];document.getElementById('mgr-name').textContent=d.currentManager}else{openMgrModal()}}
 
 /* DASHBOARD */
@@ -625,7 +607,13 @@ function saveCons(){
   else{var idx=d.conseillers.findIndex(function(c){return c.id===eid});if(idx>=0){obj.id=eid;obj.createdAt=d.conseillers[idx].createdAt;d.conseillers[idx]=obj}}
   DB.save();closeModal('mod-cons');renderEquipe();
 }
-async function delCons(id){var d=DB.get();var c=d.conseillers.find(function(x){return x.id===id});if(!c||!confirm('Supprimer '+c.name+' ?'))return;await _sb.from('conseillers').delete().eq('id',id);await sbLoad();renderEquipe();}
+async function delCons(id){
+  var d=DB.get();var c=d.conseillers.find(function(x){return x.id===id});
+  if(!c||!confirm('Supprimer '+c.name+' ?'))return;
+  var res=await _sb.from('conseillers').delete().eq('id',id);
+  if(res.error){alert('Erreur: '+res.error.message);return}
+  await sbLoad();renderEquipe();
+}
 
 /* FICHE */
 var ficheChart=null;
@@ -764,7 +752,20 @@ function addObj(){
   if(!d.objections[rdv].includes(val))d.objections[rdv].push(val);
   DB.save();inp.value='';renderObjList(rdv);
 }
-async function saveEval(){var d=DB.get();var rdv=document.getElementById('ev-rdv').value;var w=d.weights[rdv];function ds(dim){var v=Object.values(evBlocs[dim]).filter(function(e){return e.q});return v.length?Math.round(v.reduce(function(s,e){return s+QVAL[e.q]},0)/v.length):0}var t=ds('tech'),c=ds('com'),p=ds('pro');var g=Math.round(t*w.tech/100+c*w.com/100+p*w.pro/100);function buildBlocs(dim){return Object.values(evBlocs[dim]).map(function(e){var bid=dim+'_'+e.b.replace(/\W/g,'_');var el=document.getElementById('cmt-'+bid);return{b:e.b,q:e.q,c:el?el.value.trim():''}})}var ev={cons_id:document.getElementById('ev-cons').value,rdv:rdv,manager:d.currentManager||'Manager',eval_date:document.getElementById('ev-date').value,blocs_tech:buildBlocs('tech'),blocs_com:buildBlocs('com'),blocs_pro:buildBlocs('pro'),objs:JSON.parse(JSON.stringify(evObjs)),synthese:document.getElementById('ev-synthese').value.trim(),score_tech:t,score_com:c,score_pro:p,score_global:g};var res=await _sb.from('evaluations').insert(ev);if(res.error){alert('Erreur: '+res.error.message);return}await sbLoad();
+async function saveEval(){
+  var d=DB.get();
+  var rdv=document.getElementById('ev-rdv').value;
+  var w=d.weights[rdv];
+  function ds(dim){var v=Object.values(evBlocs[dim]).filter(function(e){return e.q});return v.length?Math.round(v.reduce(function(s,e){return s+QVAL[e.q]},0)/v.length):0}
+  var t=ds('tech'),c=ds('com'),p=ds('pro');
+  var g=Math.round(t*w.tech/100+c*w.com/100+p*w.pro/100);
+  function buildBlocs(dim){return Object.values(evBlocs[dim]).map(function(e){var bid=dim+'_'+e.b.replace(/\W/g,'_');var el=document.getElementById('cmt-'+bid);return{b:e.b,q:e.q,c:el?el.value.trim():''}})}
+  var consId=document.getElementById('ev-cons').value;
+  var payload={cons_id:consId,rdv:rdv,manager:d.currentManager||'Manager',eval_date:document.getElementById('ev-date').value,blocs_tech:buildBlocs('tech'),blocs_com:buildBlocs('com'),blocs_pro:buildBlocs('pro'),objs:JSON.parse(JSON.stringify(evObjs)),synthese:document.getElementById('ev-synthese').value.trim(),score_tech:t,score_com:c,score_pro:p,score_global:g};
+  var res=await _sb.from('evaluations').insert(payload);
+  if(res.error){alert('Erreur Supabase: '+res.error.message);return}
+  await sbLoad();
+  var ev=payload;
   var l=lv(g);var cons=d.conseillers.find(function(x){return x.id===ev.cons_id});
   var weak=[];if(t<50)weak.push({lbl:'Technique',s:t,a:'Révision des blocs Absent et Faible. Formation dédiée.'});if(c<50)weak.push({lbl:'Commercial',s:c,a:'Drills objections + jeux de rôle enregistrés.'});if(p<50)weak.push({lbl:'Professionnalisme',s:p,a:'Enregistrement vidéo. Posture, structure, vocabulaire.'});
   var failObjs=evObjs.filter(function(o){return o.ok===false});
@@ -855,7 +856,7 @@ function renderMgrSettings(){
     +d.managers.map(function(m){return'<div class="flex ac gap2 mb1" style="padding:7px 10px;background:var(--ow);border-radius:var(--r)"><div class="mgr-dot" style="width:28px;height:28px;font-size:11px">'+m.name[0]+'</div><span class="f1 fs12 bold">'+m.name+'</span><button class="btn btn-r btn-sm" onclick="removeMgr(\''+m.name+'\')">Supprimer</button></div>'}).join('')
     +'<div class="flex gap1 mt2"><input type="text" id="mgr-new" placeholder="Nom du manager" style="flex:1"><button class="btn btn-g btn-sm" onclick="addMgrSettings()">Ajouter</button></div></div>';
 }
-async function addMgrSettings(){var n=document.getElementById('mgr-new').value.trim();if(!n)return;await _sb.from('managers').insert({name:n});await sbLoad();document.getElementById('mgr-new').value='';renderMgrSettings();}
+async function addMgrSettings(){var n=document.getElementById('mgr-new').value.trim();if(!n)return;var res=await _sb.from('managers').insert({name:n});if(res.error){alert('Erreur: '+res.error.message);return}await sbLoad();document.getElementById('mgr-new').value='';renderMgrSettings();}
 function removeMgr(name){var d=DB.get();if(d.managers.length<=1){alert('Il faut au moins un manager.');return}d.managers=d.managers.filter(function(m){return m.name!==name});if(d.currentManager===name)d.currentManager=null;DB.save();renderMgrSettings();initMgr()}
 
 function renderWeightsEditor(){
@@ -876,9 +877,9 @@ function removeObjBase(rdv,o){var d=DB.get();d.objections[rdv]=(d.objections[rdv
 
 /* INIT */
 async function init(){
-  var ok = await sbLoad();
+  var ok=await sbLoad();
   if(ok){sbRealtime();initMgr();renderDash();}
-  else{document.getElementById('p-dash').innerHTML='<div style="text-align:center;padding:40px;color:#8B1515"><div style="font-size:32px">⚠️</div><div>Impossible de se connecter à Supabase.<br>Vérifiez votre connexion internet.</div></div>';}
+  else{document.getElementById('p-dash').innerHTML='<div style="text-align:center;padding:40px;color:#8B1515"><div style="font-size:32px">⚠️</div><div>Impossible de se connecter à Supabase.</div></div>';}
 }
 init();
 </script>
