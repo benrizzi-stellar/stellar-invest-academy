@@ -468,9 +468,9 @@ function fd(d){if(!d)return'—';var p=d.split('-');return p[2]+'/'+p[1]+'/'+p[0
 function uid(){return'x'+Date.now().toString(36)+Math.random().toString(36).slice(2,5)}
 function daysSince(ds){if(!ds)return 9999;return Math.floor((new Date()-new Date(ds))/(864e5))}
 function calcAnc(ds){if(!ds)return'';var m=Math.floor((new Date()-new Date(ds))/(864e5*30.5));if(m<1)return'< 1 mois';if(m<12)return m+' mois';var y=Math.floor(m/12);var rm=m%12;return y+'an'+(y>1?'s':'')+(rm?' '+rm+'m':'')}
-function lastScore(cid){var evs=DB.get().evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return b.date.localeCompare(a.date)});return evs.length?evs[0].score_global:null}
-function lastDate(cid){var evs=DB.get().evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return b.date.localeCompare(a.date)});return evs.length?evs[0].date:null}
-function trendVal(cid){var evs=DB.get().evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return b.date.localeCompare(a.date)});return evs.length>=2?evs[0].score_global-evs[1].score_global:null}
+function lastScore(cid){var evs=DB.get().evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return (b.eval_date||'').localeCompare(a.eval_date||'')});return evs.length?evs[0].score_global:null}
+function lastDate(cid){var evs=DB.get().evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return (b.eval_date||'').localeCompare(a.eval_date||'')});return evs.length?evs[0].eval_date:null}
+function trendVal(cid){var evs=DB.get().evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return (b.eval_date||'').localeCompare(a.eval_date||'')});return evs.length>=2?evs[0].score_global-evs[1].score_global:null}
 function scoreByRdv(cid){var res={};DB.get().evals.filter(function(e){return e.cons_id===cid}).forEach(function(e){if(!res[e.rdv])res[e.rdv]={sum:0,n:0};res[e.rdv].sum+=e.score_global;res[e.rdv].n++});var out={};Object.keys(res).forEach(function(k){out[k]={avg:Math.round(res[k].sum/res[k].n),n:res[k].n}});return out}
 function evalStatus(c){var freq=c.freq||14;var d=daysSince(lastDate(c.id));if(d===9999)return{cls:'sp-new',lbl:'Non évalué',late:true};if(d<=freq)return{cls:'sp-ok',lbl:'À jour ('+d+'j)',late:false};if(d<=freq*1.5)return{cls:'sp-due',lbl:'Bientôt ('+d+'j)',late:false};return{cls:'sp-late',lbl:'En retard — '+d+'j',late:true}}
 
