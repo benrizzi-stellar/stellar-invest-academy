@@ -400,8 +400,14 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 var _sb=supabase.createClient('https://bkrzqitbzedmuwvuqxth.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrcnpxaXRiemVkbXV3dnVxeHRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzQ5MDYsImV4cCI6MjA5NDk1MDkwNn0.uTimyUG9_q-MiErZ3wjYOU0Xl4Vzj1ZkVg4i5X6_qBY');
 var _st={conseillers:[],evals:[],managers:[]};
 var ADMIN='Benjamin Rizzi';
-var ADMIN_PWD='benrizzi';
-var _locked=false;
+var USERS={
+  'Benjamin Rizzi':{pwd:'BR@Stellar2025!',role:'admin'},
+  'Hermes Coutureau':{pwd:'Mgr1#Invest!',role:'manager'},
+  'Enzo Gebel':{pwd:'Mgr2#Invest!',role:'manager'},
+  'Mathias Sarfati':{pwd:'Mgr3#Invest!',role:'manager'},
+  'Louis Boob':{pwd:'Mgr4#Invest!',role:'manager'},
+  'Terence Goncalves':{pwd:'Mgr5#Invest!',role:'manager'}
+};
 
 // Config stored in localStorage
 function _lcGet(k,def){try{var v=localStorage.getItem(k);return v?JSON.parse(v):def;}catch(e){return def;}}
@@ -410,11 +416,16 @@ function _lcSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 function _curMgr(){return _lcGet('sia_mgr2',null);}
 function _setCurMgr(n){_lcSet('sia_mgr2',n);}
 function isAdmin(){return _curMgr()===ADMIN;}
+function getUserPwd(n){var u=USERS[n];return u?u.pwd:null;}
 function myConseillers(){
   if(isAdmin())return _st.conseillers;
+  // Try from Supabase managers table first
   var m=_st.managers.find(function(x){return x.name===_curMgr();});
-  if(!m||!m.team)return[];
-  return _st.conseillers.filter(function(c){return m.team.indexOf(c.id)>=0;});
+  if(m&&m.team&&m.team.length>0){
+    return _st.conseillers.filter(function(c){return m.team.indexOf(c.id)>=0;});
+  }
+  // Fallback: show all if no assignment yet
+  return _st.conseillers;
 }
 function myEvals(){
   if(isAdmin())return _st.evals;
@@ -505,20 +516,17 @@ function hide(id){document.getElementById(id).classList.add('hidden');}
 
 // Manager / Auth
 function openMgrModal(){
-  if(_locked){alert('Session verrouillee. Rechargez la page pour changer de profil.');return;}
   document.getElementById('mod-mgr').classList.remove('hidden');
   renderMgrList();
 }
 function renderMgrList(){
-  var admEntry=[{name:ADMIN,isAdmin:true}];
-  var mgrs=(_st.managers||[]).filter(function(m){return m.name!==ADMIN;});
-  var all=admEntry.concat(mgrs);
-  document.getElementById('mod-mgr-list').innerHTML=all.map(function(m){
-    var a=m.name===_curMgr();
-    var isA=m.name===ADMIN;
-    return '<div style="display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--r);background:'+(a?'var(--gp)':'var(--ow)')+';border:1px solid '+(a?'var(--gl)':'transparent')+';cursor:pointer;margin-bottom:6px" data-mgr="'+m.name+'" onclick="selectMgrEl(this)">'
-      +'<div class="mgr-dot" style="background:'+(isA?'#C9A84C':'#2563EB')+'">'+m.name[0]+'</div>'
-      +'<div style="flex:1"><div style="font-size:13px;font-weight:'+(a?700:400)+'">'+m.name+'</div>'
+  var names=Object.keys(USERS);
+  document.getElementById('mod-mgr-list').innerHTML=names.map(function(n){
+    var a=n===_curMgr();
+    var isA=n===ADMIN;
+    return'<div style="display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--r);background:'+(a?'var(--gp)':'var(--ow)')+';border:1px solid '+(a?'var(--gl)':'transparent')+';cursor:pointer;margin-bottom:6px" data-mgr="'+n+'" onclick="selectMgrEl(this)">'
+      +'<div class="mgr-dot" style="background:'+(isA?'#C9A84C':'#2563EB')+'">'+n[0]+'</div>'
+      +'<div style="flex:1"><div style="font-size:13px;font-weight:'+(a?700:400)+'">'+n+'</div>'
       +'<div style="font-size:10px;color:var(--mu)">'+(isA?'Administrateur':'Manager')+'</div></div>'
       +(a?'<span class="badge lv-elite">Actif</span>':'')
       +'</div>';
@@ -526,19 +534,18 @@ function renderMgrList(){
 }
 function selectMgrEl(el){selectMgr(el.getAttribute('data-mgr'));}
 function selectMgr(n){
-  if(n===ADMIN){
-    var p=prompt('Mot de passe administrateur :');
-    if(!p||p!==ADMIN_PWD){alert('Mot de passe incorrect.');return;}
-    _locked=false;
-  }else{_locked=true;}
+  var user=USERS[n];
+  if(!user){alert('Utilisateur inconnu.');return;}
+  var p=prompt('Mot de passe pour '+n+' :');
+  if(!p||p!==user.pwd){alert('Mot de passe incorrect.');return;}
   _setCurMgr(n);
   document.getElementById('mgr-dot').textContent=n[0];
   document.getElementById('mgr-name').textContent=n;
   var rb=document.getElementById('role-badge');
-  if(rb){rb.style.display='inline';rb.textContent=n===ADMIN?'ADMIN':'MANAGER';}
+  if(rb){rb.style.display='inline';rb.textContent=user.role==='admin'?'ADMIN':'MANAGER';}
   closeModal('mod-mgr');
   renderCurrentPage();
-  toast('Connecte : '+n+(n===ADMIN?' (Admin)':''),true);
+  toast('Connecte : '+n,true);
 }
 async function addMgrFromModal(){
   var n=document.getElementById('mod-mgr-inp').value.trim();if(!n)return;
@@ -552,8 +559,8 @@ function initMgr(){
     document.getElementById('mgr-dot').textContent=cm[0];
     document.getElementById('mgr-name').textContent=cm;
     var rb=document.getElementById('role-badge');
-    if(rb){rb.style.display='inline';rb.textContent=cm===ADMIN?'ADMIN':'MANAGER';}
-    if(cm!==ADMIN)_locked=true;
+    var u=USERS[cm];
+    if(rb){rb.style.display='inline';rb.textContent=u&&u.role==='admin'?'ADMIN':'MANAGER';}
   }else{openMgrModal();}
 }
 
