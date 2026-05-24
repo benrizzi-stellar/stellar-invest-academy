@@ -548,7 +548,7 @@ function renderDash(){
       +'<button class="btn btn-g btn-sm" style="padding:4px 9px;font-size:10px" onclick="quickEvalFor(\''+c.id+'\')">Évaluer</button>'
       +'</div>';
   }).join('')||'<div class="fs12 mu">Aucun conseiller — ajoutez-en dans Équipe.</div>';
-  var last=[].concat(d.evals).sort(function(a,b){return b.date.localeCompare(a.date)}).slice(0,7);
+  var last=[].concat(d.evals).sort(function(a,b){return (b.eval_date||"").localeCompare(a.eval_date||"")}).slice(0,7);
   document.getElementById('dash-evals').innerHTML=last.map(function(e){
     var c=d.conseillers.find(function(x){return x.id===e.cons_id});if(!c)return'';var l=lv(e.score_global);
     return'<tr onclick="showDrillModal(\''+e.id+'\')">'
@@ -733,20 +733,69 @@ function updateScore(){
 function renderObjList(rdv){
   var objs=DB.get().objections[rdv]||[];
   document.getElementById('ev-obj-list').innerHTML=objs.map(function(o){
-    var eobj=evObjs.find(function(x){return x.text===o});var active=!!eobj;
-    var iid='od_'+o.replace(/\W/g,'_');
-    return'<div class="obj-item'+(active?' active':'')+'" id="'+iid+'">'
-      +'<div class="obj-hd"><input type="checkbox"'+(active?' checked':'')+' style="width:15px;height:15px;accent-color:var(--n)" onchange="toggleObj(\''+o.replace(/'/g,"\\'")+'\'this)"><span style="font-size:12px;font-weight:600;color:var(--n);flex:1">'+o+'</span>'+(active&&eobj&&eobj.ok!==null?'<span>'+(eobj.ok?'✔':'✘')+'</span>':'')+'</div>'
-      +'<div class="obj-body">'
-      +'<div class="treat-row"><span class="fs11 mu" style="width:85px">Traitement :</span>'
-      +'<div class="treat-toggle"><button class="treat-opt ok'+(active&&eobj&&eobj.ok===true?' sel':'')+'" onclick="setObjOk(\''+o.replace(/'/g,"\\'")+'\'true)">✔ Oui</button>'
-      +'<button class="treat-opt ko'+(active&&eobj&&eobj.ok===false?' sel':'')+'" onclick="setObjOk(\''+o.replace(/'/g,"\\'")+'\'false)">✘ Non</button></div></div>'
-      +'<input type="text" maxlength="40" value="'+(active&&eobj&&eobj.note?eobj.note:'')+'" placeholder="Note courte (ex: bonne reformulation)…" style="font-size:11px" oninput="setObjNote(\''+o.replace(/'/g,"\\'")+'\'this.value)"></div></div>';
+    var eobj=evObjs.find(function(x){return x.text===o});
+    var active=!!eobj;
+    var okSel=active&&eobj&&eobj.ok===true;
+    var koSel=active&&eobj&&eobj.ok===false;
+    var noteVal=(active&&eobj&&eobj.note)?eobj.note.replace(/"/g,'&quot;'):'';
+    var esc=o.replace(/"/g,'&quot;');
+    var iid='od_'+o.replace(/[^a-zA-Z0-9]/g,'_');
+    var h='<div class="obj-item'+(active?' active':'')+'" id="'+iid+'">';
+    h+='<div class="obj-hd" style="cursor:pointer" onclick="objToggle(this)">';
+    h+='<input type="checkbox"'+(active?' checked':'')+' style="width:15px;height:15px;accent-color:var(--n);pointer-events:none" data-o="'+esc+'">';
+    h+='<span style="font-size:12px;font-weight:600;color:var(--n);flex:1">'+o+'</span>';
+    if(active&&eobj&&eobj.ok!==null)h+='<span class="obj-ok-badge" style="font-size:14px;color:'+(okSel?'var(--tb)':'var(--crit)')+';">'+(okSel?'✔':'✘')+'</span>';
+    h+='</div>';
+    h+='<div class="obj-body">';
+    h+='<div class="treat-row"><span class="fs11 mu" style="width:90px;flex-shrink:0">Traitement :</span>';
+    h+='<div class="treat-toggle">';
+    h+='<button class="treat-opt ok'+(okSel?' sel':'')+'" data-o="'+esc+'" data-v="1" onclick="objTreat(this)">✔ Bien traité</button>';
+    h+='<button class="treat-opt ko'+(koSel?' sel':'')+'" data-o="'+esc+'" data-v="0" onclick="objTreat(this)">✘ Mal traité</button>';
+    h+='</div></div>';
+    h+='<div style="margin-top:8px">';
+    h+='<label style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--mu);font-weight:700;display:block;margin-bottom:3px">Commentaire manager</label>';
+    h+='<input type="text" maxlength="80" value="'+noteVal+'" placeholder="ex: aucune réponse, a abandonné rapidement…" style="font-size:11px;width:100%" data-o="'+esc+'" oninput="objNote(this)">';
+    h+='</div></div></div>';
+    return h;
   }).join('');
 }
-function toggleObj(o,cb){var idx=evObjs.findIndex(function(x){return x.text===o});if(cb.checked){if(idx<0)evObjs.push({text:o,ok:null,note:''})}else{if(idx>=0)evObjs.splice(idx,1)}renderObjList(document.getElementById('ev-rdv').value)}
-function setObjOk(o,val){var obj=evObjs.find(function(x){return x.text===o});if(!obj)return;obj.ok=val;var el=document.getElementById('od_'+o.replace(/\W/g,'_'));if(!el)return;el.querySelectorAll('.treat-opt').forEach(function(b){b.classList.remove('sel')});el.querySelectorAll('.treat-opt.'+(val?'ok':'ko')).forEach(function(b){b.classList.add('sel')})}
-function setObjNote(o,val){var obj=evObjs.find(function(x){return x.text===o});if(obj)obj.note=val}
+function objToggle(hd){
+  var o=hd.querySelector('input').getAttribute('data-o');
+  var idx=evObjs.findIndex(function(x){return x.text===o});
+  if(idx>=0){evObjs.splice(idx,1)}else{evObjs.push({text:o,ok:null,note:''});}
+  renderObjList(document.getElementById('ev-rdv').value);
+}
+function objTreat(btn){
+  var o=btn.getAttribute('data-o');
+  var val=btn.getAttribute('data-v')==='1';
+  var obj=evObjs.find(function(x){return x.text===o});
+  if(!obj)return;
+  obj.ok=val;
+  var tg=btn.closest('.treat-toggle');
+  tg.querySelectorAll('.treat-opt').forEach(function(b){b.classList.remove('sel')});
+  btn.classList.add('sel');
+  var badge=btn.closest('.obj-item').querySelector('.obj-ok-badge');
+  if(badge){badge.textContent=val?'✔':'✘';badge.style.color=val?'var(--tb)':'var(--crit)';}
+}
+function objNote(inp){
+  var o=inp.getAttribute('data-o');
+  var obj=evObjs.find(function(x){return x.text===o});
+  if(obj)obj.note=inp.value;
+}
+function toggleObj(o,cb){
+  var idx=evObjs.findIndex(function(x){return x.text===o});
+  if(cb&&cb.checked){if(idx<0)evObjs.push({text:o,ok:null,note:''});}
+  else{if(idx>=0)evObjs.splice(idx,1);}
+  renderObjList(document.getElementById('ev-rdv').value);
+}
+function setObjOk(o,val){
+  var obj=evObjs.find(function(x){return x.text===o});
+  if(obj){obj.ok=val;}
+}
+function setObjNote(o,val){
+  var obj=evObjs.find(function(x){return x.text===o});
+  if(obj)obj.note=val;
+}
 function addObj(){
   var inp=document.getElementById('ev-obj-input');var val=inp.value.trim();if(!val)return;
   evObjs.push({text:val,ok:null,note:''});
