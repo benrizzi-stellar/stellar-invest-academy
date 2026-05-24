@@ -553,9 +553,9 @@ function renderDash(){
     return'<tr onclick="showDrillModal(\''+e.id+'\')">'
       +'<td><div class="flex ac gap1"><div class="ava" style="width:26px;height:26px;font-size:10px">'+ini(c.name)+'</div>'+c.name+'</div></td>'
       +'<td class="fs11 mu">'+DB.rdv()[e.rdv].label+'</td><td class="fs11">'+e.manager+'</td><td class="fs11 mu">'+fd(e.eval_date)+'</td>'
-      +'<td style="font-weight:700;color:'+sc(e.scores.tech)+'">'+e.scores.tech+'</td>'
-      +'<td style="font-weight:700;color:'+sc(e.scores.com)+'">'+e.scores.com+'</td>'
-      +'<td style="font-weight:700;color:'+sc(e.scores.pro)+'">'+e.scores.pro+'</td>'
+      +'<td style="font-weight:700;color:'+sc(e.score_tech)+'">'+e.score_tech+'</td>'
+      +'<td style="font-weight:700;color:'+sc(e.score_com)+'">'+e.score_com+'</td>'
+      +'<td style="font-weight:700;color:'+sc(e.score_pro)+'">'+e.score_pro+'</td>'
       +'<td><strong style="font-size:15px;color:'+l.c+'">'+e.score_global+'</strong></td>'
       +'<td><span class="badge '+l.cls+'">'+l.lbl+'</span></td></tr>';
   }).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--mu);padding:20px">Aucune évaluation — commencez par en créer une.</td></tr>';
@@ -622,12 +622,12 @@ var ficheChart=null;
 function openFiche(cid){
   go('fiche');var d=DB.get();var c=d.conseillers.find(function(x){return x.id===cid});if(!c)return;
   document.getElementById('fiche-title').textContent=c.name;
-  var evs=d.evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return a.date.localeCompare(b.date)});
-  var s=evs.length?evs[evs.length-1].global:null;var l=s!==null?lv(s):{cls:'',lbl:'—',c:'#ccc'};
+  var evs=d.evals.filter(function(e){return e.cons_id===cid}).sort(function(a,b){return a.eval_date.localeCompare(b.eval_date)});
+  var s=evs.length?evs[evs.length-1].score_global:null;var l=s!==null?lv(s):{cls:'',lbl:'—',c:'#ccc'};
   var byRdv=scoreByRdv(cid);
-  var avgT=evs.length?Math.round(evs.reduce(function(a,e){return a+e.scores.tech},0)/evs.length):0;
-  var avgC=evs.length?Math.round(evs.reduce(function(a,e){return a+e.scores.com},0)/evs.length):0;
-  var avgP=evs.length?Math.round(evs.reduce(function(a,e){return a+e.scores.pro},0)/evs.length):0;
+  var avgT=evs.length?Math.round(evs.reduce(function(a,e){return a+e.score_tech},0)/evs.length):0;
+  var avgC=evs.length?Math.round(evs.reduce(function(a,e){return a+e.score_com},0)/evs.length):0;
+  var avgP=evs.length?Math.round(evs.reduce(function(a,e){return a+e.score_pro},0)/evs.length):0;
   var oc={};var oBad={};
   evs.forEach(function(e){(e.objs||[]).forEach(function(o){var t=o.text||o;oc[t]=(oc[t]||0)+1;if(o.ok===false)oBad[t]=(oBad[t]||0)+1})});
   var topObjs=Object.keys(oc).sort(function(a,b){return oc[b]-oc[a]}).slice(0,5);
@@ -659,7 +659,7 @@ function openFiche(cid){
     var el=document.getElementById('cv-fiche');if(!el||!evs.length)return;
     if(ficheChart){ficheChart.destroy();ficheChart=null}
     if(typeof Chart==='undefined')return;
-    ficheChart=new Chart(el,{type:'line',data:{labels:evs.map(function(e){return fd(e.eval_date)}),datasets:[{label:'Global',data:evs.map(function(e){return e.score_global}),borderColor:'#C9A84C',backgroundColor:'rgba(201,168,76,.1)',fill:true,tension:.4,borderWidth:2.5,pointRadius:5,pointBackgroundColor:'#C9A84C'},{label:'Tech.',data:evs.map(function(e){return e.scores.tech}),borderColor:'#2563EB',fill:false,tension:.4,borderWidth:1.5,pointRadius:3,borderDash:[4,3]},{label:'Com.',data:evs.map(function(e){return e.scores.com}),borderColor:'#1B7A4A',fill:false,tension:.4,borderWidth:1.5,pointRadius:3,borderDash:[4,3]},{label:'Pro.',data:evs.map(function(e){return e.scores.pro}),borderColor:'#7C3AED',fill:false,tension:.4,borderWidth:1.5,pointRadius:3,borderDash:[4,3]}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10,padding:10}}},scales:{x:{grid:{display:false},ticks:{font:{size:9}}},y:{min:0,max:100,grid:{color:'rgba(0,0,0,.04)'},ticks:{font:{size:10}}}}}});
+    ficheChart=new Chart(el,{type:'line',data:{labels:evs.map(function(e){return fd(e.eval_date)}),datasets:[{label:'Global',data:evs.map(function(e){return e.score_global}),borderColor:'#C9A84C',backgroundColor:'rgba(201,168,76,.1)',fill:true,tension:.4,borderWidth:2.5,pointRadius:5,pointBackgroundColor:'#C9A84C'},{label:'Tech.',data:evs.map(function(e){return e.score_tech}),borderColor:'#2563EB',fill:false,tension:.4,borderWidth:1.5,pointRadius:3,borderDash:[4,3]},{label:'Com.',data:evs.map(function(e){return e.score_com}),borderColor:'#1B7A4A',fill:false,tension:.4,borderWidth:1.5,pointRadius:3,borderDash:[4,3]},{label:'Pro.',data:evs.map(function(e){return e.score_pro}),borderColor:'#7C3AED',fill:false,tension:.4,borderWidth:1.5,pointRadius:3,borderDash:[4,3]}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10,padding:10}}},scales:{x:{grid:{display:false},ticks:{font:{size:9}}},y:{min:0,max:100,grid:{color:'rgba(0,0,0,.04)'},ticks:{font:{size:10}}}}}});
   },80);
 }
 function quickEvalFor(cid){go('eval');setTimeout(function(){var s=document.getElementById('ev-cons');if(s)s.value=cid},50)}
@@ -673,7 +673,7 @@ function showDrillModal(eid){
     +'<div style="text-align:center"><strong style="font-size:30px;color:'+l.c+'">'+e.score_global+'</strong><div class="fs10 mu">/100</div></div>'
     +'<span class="badge '+l.cls+'">'+l.lbl+'</span><span class="fs11 mu">Par '+e.manager+'</span></div>'
     +'<div class="g3 mb2" style="gap:8px">'
-    +[{lbl:'Technique',k:'tech'},{lbl:'Commercial',k:'com'},{lbl:'Pro.',k:'pro'}].map(function(x){var s=e.scores[x.k];return'<div style="text-align:center;padding:8px;background:'+sc(s)+'18;border-radius:var(--r)"><div class="fs10 mu">'+x.lbl+'</div><div style="font-size:20px;font-weight:700;color:'+sc(s)+'">'+s+'</div></div>'}).join('')+'</div>';
+    +[{lbl:'Technique',k:'tech'},{lbl:'Commercial',k:'com'},{lbl:'Pro.',k:'pro'}].map(function(x){var s=e.score_tech[x.k];return'<div style="text-align:center;padding:8px;background:'+sc(s)+'18;border-radius:var(--r)"><div class="fs10 mu">'+x.lbl+'</div><div style="font-size:20px;font-weight:700;color:'+sc(s)+'">'+s+'</div></div>'}).join('')+'</div>';
   ['tech','com','pro'].forEach(function(dim){
     var lb2={'tech':'Technique','com':'Commercial','pro':'Professionnalisme'}[dim];
     var blocs=e.blocs[dim]||[];if(!blocs.length)return;
