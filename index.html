@@ -139,6 +139,7 @@ select:focus,input:focus,textarea:focus{border-color:var(--g)}
 .sp-late{background:var(--crit-bg);color:var(--crit)}
 .sp-new{background:var(--bon-bg);color:var(--bon)}
 .rdv-pill{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:var(--r);border:1px solid var(--bd);margin:4px 0;font-size:12px;background:var(--w)}
+.ai-badge{display:inline-flex;align-items:center;gap:3px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:700;letter-spacing:.5px}
 .freq-badge{display:inline-flex;align-items:center;gap:4px;background:var(--bon-bg);color:var(--bon);border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700}
 
 /* MODAL */
@@ -398,7 +399,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 <script>
 var _sb=supabase.createClient('https://bkrzqitbzedmuwvuqxth.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrcnpxaXRiemVkbXV3dnVxeHRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzQ5MDYsImV4cCI6MjA5NDk1MDkwNn0.uTimyUG9_q-MiErZ3wjYOU0Xl4Vzj1ZkVg4i5X6_qBY');
-var _st={conseillers:[],evals:[],managers:[]};
+var _st={conseillers:[],evals:[],managers:[],planning:[]};
 var ADMIN='Benjamin Rizzi';
 var USERS={
   'Benjamin Rizzi':{pwd:'BR@Stellar2025!',role:'admin'},
@@ -409,6 +410,21 @@ var USERS={
   'Terence Goncalves':{pwd:'Mgr5#Invest!',role:'manager'}
 };
 
+// NOTE: Run this SQL in Supabase:
+// CREATE TABLE IF NOT EXISTS planning (
+//   id uuid default gen_random_uuid() primary key,
+//   cons_id uuid references conseillers(id) on delete cascade,
+//   manager text,
+//   rdv text,
+//   eval_type text default 'Drill',
+//   planned_date date not null,
+//   status text default 'a_faire',
+//   priority text default 'normale',
+//   notes text,
+//   created_at timestamptz default now()
+// );
+// ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS source text DEFAULT 'manuel';
+// ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS ai_report jsonb;
 // Config stored in localStorage
 function _lcGet(k,def){try{var v=localStorage.getItem(k);return v?JSON.parse(v):def;}catch(e){return def;}}
 function _lcSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
@@ -426,6 +442,10 @@ function myConseillers(){
   }
   // Fallback: show all if no assignment yet
   return _st.conseillers;
+}
+function myPlanning(){
+  if(isAdmin())return _st.planning||[];
+  return (_st.planning||[]).filter(function(p){return p.manager===_curMgr();});
 }
 function myEvals(){
   if(isAdmin())return _st.evals;
@@ -454,12 +474,14 @@ async function sbLoad(){
     var r=await Promise.all([
       _sb.from('conseillers').select('*').order('name'),
       _sb.from('evaluations').select('*').order('eval_date',{ascending:false}),
-      _sb.from('managers').select('*').order('name')
+      _sb.from('managers').select('*').order('name'),
+      _sb.from('planning').select('*').order('planned_date')
     ]);
     if(r[0].error)throw r[0].error;
     _st.conseillers=r[0].data||[];
     _st.evals=r[1].data||[];
     _st.managers=r[2].data||[];
+    _st.planning=r[3].data||[];
     var dot=document.getElementById('sync-dot');
     if(dot)dot.style.display='block';
     return true;
@@ -474,6 +496,7 @@ var _curPage='dash';
 function renderCurrentPage(){
   if(_curPage==='dash')renderDash();
   else if(_curPage==='equipe')renderEquipe();
+  else if(_curPage==='planning')renderWeekPlanning();
 }
 
 // Helpers
@@ -507,6 +530,8 @@ function go(p){
   if(p==='equipe')renderEquipe();
   if(p==='eval')initEval();
   if(p==='settings')showTab('blocs',document.querySelector('.seg-b'));
+  if(p==='analyse')initAnalyse();
+  if(p==='planning'){_weekOffset=0;renderWeekPlanning();}
 }
 function quickEval(t){go('eval');setTimeout(function(){var s=document.getElementById('ev-rdv');if(s){s.value=t;onRdvChange();}},50);}
 function quickEvalFor(cid){go('eval');setTimeout(function(){var s=document.getElementById('ev-cons');if(s)s.value=cid;},50);}
@@ -571,14 +596,15 @@ function renderDash(){
   var scores=conseillers.map(function(c){return lastScore(c.id);}).filter(function(s){return s!==null;});
   var avg=scores.length?Math.round(scores.reduce(function(a,b){return a+b;},0)/scores.length):0;
   var late=conseillers.filter(function(c){return evalStatus(c).late;}).length;
+  var planLate=myPlanning().filter(function(p){return p.status==='a_faire'&&p.planned_date<new Date().toISOString().split('T')[0];}).length;
   var ok=conseillers.filter(function(c){var st=evalStatus(c);return !st.late&&st.cls==='sp-ok';}).length;
   var couv=conseillers.length?Math.round(ok/conseillers.length*100):0;
   var h='<div class="flex jb ac mb3"><div><div style="font-size:20px;font-weight:700;color:var(--n)">'+(isAdmin()?'Tableau de bord global':'Mon tableau de bord')+'</div><div class="fs12 mu mt1">'+(isAdmin()?'Stellar Invest Academy -- Administration':'Votre espace manager')+'</div></div><button class="btn btn-g" onclick="go(\'eval\')">+ Nouvelle evaluation</button></div>';
   h+='<div class="g4 mb3">'+[
     {lbl:'Score moyen',val:avg||'--',sub:scores.length+' evalues'},
     {lbl:'Couverture',val:couv+'%',sub:'Evaluations a jour'},
-    {lbl:'Evaluations',val:evals.length,sub:'Total'},
-    {lbl:'En retard',val:late,col:late>0,sub:'Action requise'}
+    {lbl:'Planifiees en retard',val:planLate,col:planLate>0,sub:'A realiser'},
+    {lbl:'Evaluations',val:evals.length,sub:'Total'}
   ].map(function(k){return'<div class="kpi"'+(k.col&&k.val>0?' style="background:#7A1515"':'')+'>'+
     '<div class="kpi-lbl">'+k.lbl+'</div><div class="kpi-val">'+k.val+'</div><div class="kpi-sub">'+k.sub+'</div></div>';}).join('')+'</div>';
   var alerts=[];
@@ -604,10 +630,10 @@ function renderDash(){
   var evH=lastEvs.map(function(e){
     var c=_st.conseillers.find(function(x){return x.id===e.cons_id;});if(!c)return'';
     var l=lv(e.score_global);
-    var tb=e.eval_type?'<span style="background:var(--bon-bg);color:var(--bon);border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;margin-left:4px">'+e.eval_type+'</span>':'';
+    var tb=e.eval_type?'<span style="background:var(--bon-bg);color:var(--bon);border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;margin-left:4px">'+e.eval_type+'</span>':'';var aiBadge=e.source==='ia'?'<span class="ai-badge" style="margin-left:4px">IA</span>':'';
     return'<tr onclick="showDrillModal(\''+e.id+'\')">'
       +'<td><div class="flex ac gap1"><div class="ava" style="width:26px;height:26px;font-size:10px">'+ini(c.name)+'</div>'+c.name+'</div></td>'
-      +'<td class="fs11 mu">'+DB.rdv()[e.rdv].label+tb+'</td>'
+      +'<td class="fs11 mu">'+DB.rdv()[e.rdv].label+tb+aiBadge+'</td>'
       +'<td class="fs11">'+e.manager+'</td>'
       +'<td class="fs11 mu">'+fd(e.eval_date)+'</td>'
       +'<td style="font-weight:700;color:'+sc(e.score_tech)+'">'+e.score_tech+'</td>'
@@ -1010,6 +1036,604 @@ async function init(){
   else{document.getElementById('p-dash').innerHTML='<div style="text-align:center;padding:40px;color:#8B1515"><div style="font-size:32px">!</div><div>Impossible de se connecter a Supabase.</div></div>';}
 }
 init();
+
+// ══ MODULE ANALYSE IA ══
+var ANTHROPIC_KEY='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';
+
+async function analyzeTranscription(){
+  var consId=document.getElementById('ana-cons').value;
+  var rdv=document.getElementById('ana-rdv').value;
+  var text=document.getElementById('ana-text').value.trim();
+  if(!consId){alert('Selectionnez un conseiller.');return;}
+  if(!text){alert('Collez la retranscription du rendez-vous.');return;}
+  var cons=_st.conseillers.find(function(x){return x.id===consId;});
+  var blocs=getBlocs()[rdv];
+  var weights=getWeights()[rdv];
+  var btn=document.getElementById('ana-btn');
+  btn.textContent='Analyse en cours...';btn.disabled=true;
+  document.getElementById('ana-result').innerHTML='<div class="loading"><div class="spinner"></div>Analyse en cours par Claude AI...</div>';
+  try{
+    var prompt='Tu es un expert en formation commerciale specialise en gestion de patrimoine.\n\n'
+      +'Analyse la retranscription suivante d\'un rendez-vous de type "'+blocs.label+'" realise par le conseiller '+cons.name+'.\n\n'
+      +'SCRIPT ATTENDU PAR DIMENSION :\n\n'
+      +'TECHNIQUE (ponderation '+weights.tech+'%) - Blocs attendus :\n'
+      +blocs.tech.map(function(b,i){return(i+1)+'. '+b;}).join('\n')+'\n\n'
+      +'COMMERCIAL (ponderation '+weights.com+'%) - Blocs attendus :\n'
+      +blocs.com.map(function(b,i){return(i+1)+'. '+b;}).join('\n')+'\n\n'
+      +'PROFESSIONNALISME (ponderation '+weights.pro+'%) - Blocs attendus :\n'
+      +blocs.pro.map(function(b,i){return(i+1)+'. '+b;}).join('\n')+'\n\n'
+      +'RETRANSCRIPTION DU RENDEZ-VOUS :\n'+text+'\n\n'
+      +'Reponds UNIQUEMENT en JSON valide avec cette structure exacte :\n'
+      +'{\n'
+      +'"synthese": "paragraphe de synthese globale",\n'
+      +'"points_forts": ["point 1", "point 2", "point 3"],\n'
+      +'"points_faibles": ["point 1", "point 2", "point 3"],\n'
+      +'"oublis": ["element oublie 1", "element oublie 2"],\n'
+      +'"score_tech": 0-100,\n'
+      +'"score_com": 0-100,\n'
+      +'"score_pro": 0-100,\n'
+      +'"score_global": 0-100,\n'
+      +'"qualite_commerciale": "analyse de la qualite commerciale",\n'
+      +'"qualite_technique": "analyse de la qualite technique",\n'
+      +'"professionnalisme": "analyse du professionnalisme",\n'
+      +'"objections_detectees": [{"obj": "texte objection", "reponse": "Bien geree / Partiellement / Mal geree", "commentaire": "detail"}],\n'
+      +'"recommandations": ["recommandation 1", "recommandation 2", "recommandation 3"],\n'
+      +'"appreciation": "Excellent / Tres bon / Bon / Moyen / Faible / Critique"\n'
+      +'}\n'
+      +'Sois precis, concret et base-toi uniquement sur ce que dit vraiment la retranscription.';
+    var resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]})
+    });
+    var data=await resp.json();
+    if(!resp.ok)throw new Error(data.error?data.error.message:'API error '+resp.status);
+    var raw=data.content[0].text;
+    var jsonStr=raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+    var result=JSON.parse(jsonStr);
+    renderAnalysisResult(result,consId,rdv,blocs);
+  }catch(e){
+    document.getElementById('ana-result').innerHTML='<div class="al al-crit">Erreur : '+e.message+'</div>';
+    console.error(e);
+  }
+  btn.textContent='Lancer l\'analyse IA';btn.disabled=false;
+}
+
+function renderAnalysisResult(r,consId,rdv,blocs){
+  var lv_global=lv(r.score_global);
+  var html='<div id="ana-res-wrap">'
+    // Header scores
+    +'<div style="background:var(--n);border-radius:var(--rl);padding:20px;margin-bottom:16px;text-align:center">'
+    +'<div style="font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px">Analyse IA — '+blocs.label+'</div>'
+    +'<strong style="font-size:48px;color:'+lv_global.c+'">'+r.score_global+'</strong>'
+    +'<div style="font-size:12px;color:var(--mu)">/100</div>'
+    +'<div class="mt1"><span class="badge '+lv_global.cls+'" style="font-size:12px;padding:4px 14px">'+r.appreciation+'</span></div></div>'
+    // 3 scores
+    +'<div class="g3 mb3" style="gap:10px">'
+    +[{lbl:'Technique',s:r.score_tech},{lbl:'Commercial',s:r.score_com},{lbl:'Professionnalisme',s:r.score_pro}].map(function(x){
+      return'<div style="text-align:center;padding:12px;background:'+sc(x.s)+'15;border-radius:var(--rl);border:1px solid '+sc(x.s)+'30">'
+        +'<div class="fs11 mu">'+x.lbl+'</div>'
+        +'<div style="font-size:26px;font-weight:700;color:'+sc(x.s)+'">'+x.s+'</div>'
+        +'<div class="fs10 mu">/100</div></div>';
+    }).join('')+'</div>'
+    // Synthese
+    +'<div class="card mb2"><div class="sep">Synthese globale</div><p class="fs12" style="line-height:1.6">'+r.synthese+'</p></div>'
+    // 2 colonnes : points forts / faibles
+    +'<div class="g2 mb2" style="gap:12px">'
+    +'<div class="card"><div class="sep">Points forts</div>'
+    +r.points_forts.map(function(p){return'<div class="flex ac gap2 mb1"><span style="color:var(--tb);font-size:14px">V</span><span class="fs12">'+p+'</span></div>';}).join('')+'</div>'
+    +'<div class="card"><div class="sep">Points faibles</div>'
+    +r.points_faibles.map(function(p){return'<div class="flex ac gap2 mb1"><span style="color:var(--crit);font-size:14px">X</span><span class="fs12">'+p+'</span></div>';}).join('')+'</div>'
+    +'</div>'
+    // Oublis
+    +(r.oublis&&r.oublis.length?'<div class="card mb2"><div class="sep">Elements oublies ou manquants</div>'
+    +r.oublis.map(function(o){return'<div class="flex ac gap2 mb1"><span style="color:var(--moy);font-size:14px">!</span><span class="fs12">'+o+'</span></div>';}).join('')+'</div>':'')
+    // Dimensions
+    +'<div class="g3 mb2" style="gap:12px">'
+    +'<div class="card"><div class="sep">Qualite technique</div><p class="fs12" style="line-height:1.5">'+r.qualite_technique+'</p></div>'
+    +'<div class="card"><div class="sep">Qualite commerciale</div><p class="fs12" style="line-height:1.5">'+r.qualite_commerciale+'</p></div>'
+    +'<div class="card"><div class="sep">Professionnalisme</div><p class="fs12" style="line-height:1.5">'+r.professionnalisme+'</p></div>'
+    +'</div>'
+    // Objections
+    +(r.objections_detectees&&r.objections_detectees.length?'<div class="card mb2"><div class="sep">Objections detectees</div>'
+    +r.objections_detectees.map(function(o){
+      var ok=o.reponse&&o.reponse.toLowerCase().includes('bien');
+      return'<div style="padding:8px 10px;border:1px solid var(--bd);border-radius:var(--r);margin-bottom:6px">'
+        +'<div class="flex ac gap2"><span style="font-size:12px;font-weight:600;flex:1">'+o.obj+'</span>'
+        +'<span style="background:'+(ok?'var(--tb-bg)':'var(--crit-bg)')+';color:'+(ok?'var(--tb)':'var(--crit)')+';border-radius:20px;padding:2px 9px;font-size:10px;font-weight:700">'+o.reponse+'</span></div>'
+        +(o.commentaire?'<div class="fs11 mu mt1">'+o.commentaire+'</div>':'')+'</div>';
+    }).join('')+'</div>':'')
+    // Recommandations
+    +'<div class="card mb2"><div class="sep">Recommandations concretes</div>'
+    +r.recommandations.map(function(rec,i){return'<div class="flex ac gap2 mb2"><span style="background:var(--n);color:var(--g);border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">'+(i+1)+'</span><span class="fs12">'+rec+'</span></div>';}).join('')+'</div>'
+    // Scores ajustables
+    +'<div class="card mb3"><div class="sep">Scores proposes — ajustez si necessaire</div>'
+    +'<div class="g3" style="gap:12px">'
+    +[{k:'ana-st',lbl:'Technique',v:r.score_tech},{k:'ana-sc',lbl:'Commercial',v:r.score_com},{k:'ana-sp',lbl:'Professionnalisme',v:r.score_pro}].map(function(x){
+      return'<div><label class="lbl">'+x.lbl+'</label>'
+        +'<div class="flex ac gap2"><input type="range" id="'+x.k+'" min="0" max="100" step="1" value="'+x.v+'" style="flex:1" oninput="updateAnaScore()">'
+        +'<span id="'+x.k+'v" style="font-size:14px;font-weight:700;min-width:32px;color:'+sc(x.v)+'">'+x.v+'</span></div></div>';
+    }).join('')+'</div>'
+    +'<div class="flex ac gap2 mt2"><label class="lbl" style="margin:0">Score global :</label><strong id="ana-sg" style="font-size:20px;color:var(--n)">'+r.score_global+'</strong></div>'
+    +'</div>'
+    // Synthese editable
+    +'<div class="card mb3"><div class="sep">Synthese manager (modifiable)</div>'
+    +'<textarea id="ana-synthese" rows="3" style="width:100%">'+r.synthese+'</textarea></div>'
+    // Bouton enregistrer
+    +'<button class="btn btn-g w100" style="justify-content:center;padding:14px;font-size:14px" onclick="saveAnalysis(\''+consId+'\',\''+rdv+'\')">Enregistrer cette analyse dans la fiche du conseiller</button>'
+    +'</div>';
+  document.getElementById('ana-result').innerHTML=html;
+  // Store result for save
+  window._anaResult=r;
+}
+
+function updateAnaScore(){
+  var t=parseInt(document.getElementById('ana-st').value);
+  var c=parseInt(document.getElementById('ana-sc').value);
+  var p=parseInt(document.getElementById('ana-sp').value);
+  var w=getWeights()[document.getElementById('ana-rdv').value];
+  var g=Math.round(t*w.tech/100+c*w.com/100+p*w.pro/100);
+  document.getElementById('ana-stv').textContent=t;document.getElementById('ana-stv').style.color=sc(t);
+  document.getElementById('ana-scv').textContent=c;document.getElementById('ana-scv').style.color=sc(c);
+  document.getElementById('ana-spv').textContent=p;document.getElementById('ana-spv').style.color=sc(p);
+  document.getElementById('ana-sg').textContent=g;document.getElementById('ana-sg').style.color=sc(g);
+}
+
+async function saveAnalysis(consId,rdv){
+  var t=parseInt(document.getElementById('ana-st').value);
+  var c=parseInt(document.getElementById('ana-sc').value);
+  var p=parseInt(document.getElementById('ana-sp').value);
+  var w=getWeights()[rdv];
+  var g=Math.round(t*w.tech/100+c*w.com/100+p*w.pro/100);
+  var synthese=document.getElementById('ana-synthese').value;
+  var r=window._anaResult||{};
+  var payload={
+    cons_id:consId,rdv:rdv,eval_type:'Analyse IA',
+    manager:_curMgr()||'Manager',
+    eval_date:new Date().toISOString().split('T')[0],
+    score_tech:t,score_com:c,score_pro:p,score_global:g,
+    synthese:synthese,
+    blocs_tech:[],blocs_com:[],blocs_pro:[],
+    objs:(r.objections_detectees||[]).map(function(o){return{text:o.obj,ok:o.reponse&&o.reponse.toLowerCase().includes('bien'),note:o.commentaire||''};}),
+    ia_data:JSON.stringify({points_forts:r.points_forts,points_faibles:r.points_faibles,oublis:r.oublis,recommandations:r.recommandations})
+  };
+  var res=await _sb.from('evaluations').insert(payload);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();
+  toast('Analyse enregistree dans la fiche du conseiller V',true);
+  document.getElementById('ana-result').innerHTML='<div class="al al-ok" style="font-size:13px;padding:14px">V Analyse enregistree avec succes dans la fiche de '+(_st.conseillers.find(function(x){return x.id===consId;})||{name:'conseiller'}).name+'.<br><button class="btn btn-n btn-sm mt1" onclick="openFiche(\''+consId+'\')">Voir la fiche</button></div>';
+}
+
+// ══ MODULE PLANNING ══
+var _planningWeek=0; // 0 = semaine courante
+
+async function savePlannedEval(){
+  var consId=document.getElementById('plan-cons').value;
+  var manager=document.getElementById('plan-mgr').value;
+  var rdv=document.getElementById('plan-rdv').value;
+  var type=document.getElementById('plan-type').value;
+  var date=document.getElementById('plan-date').value;
+  var prio=document.getElementById('plan-prio').value;
+  if(!consId||!date){alert('Remplissez tous les champs obligatoires.');return;}
+  var payload={
+    cons_id:consId,rdv:rdv,eval_type:type,
+    manager:manager,eval_date:date,
+    score_tech:0,score_com:0,score_pro:0,score_global:0,
+    synthese:'',blocs_tech:[],blocs_com:[],blocs_pro:[],objs:[],
+    planned:true,planned_priority:prio,planned_status:'a_faire'
+  };
+  var res=await _sb.from('evaluations').insert(payload);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();renderPlanning();
+  closeModal('mod-plan');
+  toast('Evaluation planifiee V',true);
+}
+
+async function completePlannedEval(eid){
+  // Mark as done and open eval form
+  var e=_st.evals.find(function(x){return x.id===eid;});
+  if(!e)return;
+  go('eval');
+  setTimeout(function(){
+    var cs=document.getElementById('ev-cons');
+    var rv=document.getElementById('ev-rdv');
+    var tp=document.getElementById('ev-type');
+    if(cs)cs.value=e.cons_id;
+    if(rv){rv.value=e.rdv;onRdvChange();}
+    if(tp)tp.value=e.eval_type||'Drill';
+  },100);
+}
+
+async function deletePlannedEval(eid){
+  if(!confirm('Supprimer cette evaluation planifiee ?'))return;
+  await _sb.from('evaluations').delete().eq('id',eid);
+  await sbLoad();renderPlanning();
+}
+
+function renderPlanning(){
+  var el=document.getElementById('p-planning');if(!el)return;
+  var now=new Date();
+  // Get start of week + offset
+  var day=now.getDay();var diff=day===0?-6:1-day;
+  var weekStart=new Date(now);weekStart.setDate(now.getDate()+diff+(_planningWeek*7));weekStart.setHours(0,0,0,0);
+  var weekEnd=new Date(weekStart);weekEnd.setDate(weekStart.getDate()+6);weekEnd.setHours(23,59,59,999);
+  var fmt=function(d){return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});};
+  var days=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+
+  // Get planned evals for this week
+  var myC=myConseillers().map(function(c){return c.id;});
+  var weekEvs=_st.evals.filter(function(e){
+    if(!e.planned)return false;
+    if(!myC.includes(e.cons_id)&&!isAdmin())return false;
+    var d=new Date(e.eval_date);
+    return d>=weekStart&&d<=weekEnd;
+  });
+
+  // Count overdue planned
+  var overdue=_st.evals.filter(function(e){
+    if(!e.planned||e.planned_status==='realise')return false;
+    if(!myC.includes(e.cons_id)&&!isAdmin())return false;
+    return new Date(e.eval_date)<now;
+  }).length;
+
+  var h='<div class="flex jb ac mb3">'
+    +'<div><div style="font-size:20px;font-weight:700;color:var(--n)">Planning des evaluations</div>'
+    +'<div class="fs12 mu mt1">Semaine du '+fmt(weekStart)+' au '+fmt(weekEnd)+'</div></div>'
+    +'<div class="flex gap2 ac">'
+    +(overdue>0?'<span style="background:var(--crit-bg);color:var(--crit);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:700">'+overdue+' en retard</span>':'')
+    +'<button class="btn btn-o btn-sm" onclick="_planningWeek--;renderPlanning()">&#8592; Semaine precedente</button>'
+    +'<button class="btn btn-o btn-sm" onclick="_planningWeek=0;renderPlanning()">Aujourd\'hui</button>'
+    +'<button class="btn btn-o btn-sm" onclick="_planningWeek++;renderPlanning()">Semaine suivante &#8594;</button>'
+    +'<button class="btn btn-g btn-sm" onclick="openPlanModal()">+ Planifier</button>'
+    +'</div></div>';
+
+  // Week grid
+  h+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px">';
+  for(var i=0;i<7;i++){
+    var dayDate=new Date(weekStart);dayDate.setDate(weekStart.getDate()+i);
+    var dayStr=dayDate.toISOString().split('T')[0];
+    var isToday=dayStr===now.toISOString().split('T')[0];
+    var dayEvs=weekEvs.filter(function(e){return e.eval_date===dayStr;});
+    h+='<div style="border-radius:var(--rl);border:1px solid '+(isToday?'var(--g)':'var(--bd)')+';background:'+(isToday?'var(--gp)':'var(--w)')+';min-height:120px">'
+      +'<div style="padding:8px 10px;border-bottom:1px solid var(--bd);background:'+(isToday?'var(--g)':'var(--ow)')+';border-radius:var(--rl) var(--rl) 0 0">'
+      +'<div style="font-size:11px;font-weight:700;color:'+(isToday?'var(--n)':'var(--mu)')+'">'+days[i]+'</div>'
+      +'<div style="font-size:10px;color:'+(isToday?'var(--n)':'var(--mu)')+'">'+fmt(dayDate)+'</div></div>'
+      +'<div style="padding:6px">'
+      +dayEvs.map(function(e){
+        var c=_st.conseillers.find(function(x){return x.id===e.cons_id;})||{name:'?'};
+        var isLate=new Date(e.eval_date)<now&&e.planned_status!=='realise';
+        var statusColor=e.planned_status==='realise'?'var(--tb)':isLate?'var(--crit)':'var(--bon)';
+        var statusLabel=e.planned_status==='realise'?'Realise':isLate?'En retard':'A faire';
+        var prioColor=e.planned_priority==='haute'?'var(--crit)':e.planned_priority==='moyenne'?'var(--moy)':'var(--mu)';
+        return'<div style="background:var(--n);border-radius:var(--r);padding:6px 8px;margin-bottom:4px;border-left:3px solid '+statusColor+'">'
+          +'<div style="font-size:11px;font-weight:600;color:#fff">'+c.name+'</div>'
+          +'<div style="font-size:10px;color:var(--mu)">'+DB.rdv()[e.rdv].label+'</div>'
+          +'<div class="flex ac gap1 mt1">'
+          +(e.eval_type?'<span style="background:var(--bon-bg);color:var(--bon);border-radius:3px;padding:1px 5px;font-size:9px">'+e.eval_type+'</span>':'')
+          +'<span style="background:'+statusColor+'20;color:'+statusColor+';border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700">'+statusLabel+'</span>'
+          +(e.planned_priority?'<span style="font-size:9px;color:'+prioColor+'">'+e.planned_priority+'</span>':'')
+          +'</div>'
+          +'<div class="flex gap1 mt1">'
+          +(e.planned_status!=='realise'?'<button style="font-size:9px;padding:2px 6px;background:var(--tb);color:#fff;border:none;border-radius:3px;cursor:pointer" onclick="completePlannedEval(\''+e.id+'\')">Evaluer</button>':'')
+          +'<button style="font-size:9px;padding:2px 6px;background:var(--crit-bg);color:var(--crit);border:none;border-radius:3px;cursor:pointer" onclick="deletePlannedEval(\''+e.id+'\')">X</button>'
+          +'</div></div>';
+      }).join('')
+      +'</div></div>';
+  }
+  h+='</div>';
+
+  // Overdue list
+  var overdueEvs=_st.evals.filter(function(e){
+    if(!e.planned||e.planned_status==='realise')return false;
+    if(!myC.includes(e.cons_id)&&!isAdmin())return false;
+    return new Date(e.eval_date)<weekStart;
+  });
+  if(overdueEvs.length){
+    h+='<div class="card mt3"><div class="card-title" style="color:var(--crit)">Evaluations en retard</div>'
+      +overdueEvs.map(function(e){
+        var c=_st.conseillers.find(function(x){return x.id===e.cons_id;})||{name:'?'};
+        return'<div class="flex ac gap2" style="padding:8px 0;border-bottom:1px solid var(--bd)">'
+          +'<div class="ava" style="width:28px;height:28px;font-size:10px;background:var(--crit)">'+ini(c.name)+'</div>'
+          +'<div class="f1"><div class="fs12 bold">'+c.name+'</div><div class="fs11 mu">'+DB.rdv()[e.rdv].label+(e.eval_type?' ['+e.eval_type+']':'')+'</div></div>'
+          +'<span class="fs11 mu">Prevu le '+fd(e.eval_date)+'</span>'
+          +'<button class="btn btn-g btn-sm" style="padding:4px 9px;font-size:10px" onclick="completePlannedEval(\''+e.id+'\')">Evaluer</button>'
+          +'<button class="btn btn-r btn-sm" style="padding:4px 9px;font-size:10px" onclick="deletePlannedEval(\''+e.id+'\')">X</button>'
+          +'</div>';
+      }).join('')+'</div>';
+  }
+  el.innerHTML=h;
+}
+
+function openPlanModal(){
+  var myCons=myConseillers();
+  var mgrs=isAdmin()?Object.keys(USERS):[_curMgr()];
+  document.getElementById('plan-cons').innerHTML=myCons.map(function(c){return'<option value="'+c.id+'">'+c.name+'</option>';}).join('');
+  document.getElementById('plan-mgr').innerHTML=mgrs.map(function(n){return'<option value="'+n+'"'+(n===_curMgr()?' selected':'')+'>'+n+'</option>';}).join('');
+  document.getElementById('plan-date').value=new Date().toISOString().split('T')[0];
+  document.getElementById('mod-plan').classList.remove('hidden');
+}
+
+// ══ MODULE ANALYSE IA ══
+var ANTHROPIC_KEY='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';
+
+function initAnalyse(){
+  var myCons=myConseillers();
+  var sel=document.getElementById('an-cons');
+  if(sel)sel.innerHTML=myCons.map(function(c){return'<option value="'+c.id+'">'+c.name+'</option>';}).join('');
+  var dateEl=document.getElementById('an-date');
+  if(dateEl)dateEl.value=new Date().toISOString().split('T')[0];
+}
+async function analyzeTranscript(){
+  var consId=document.getElementById('an-cons').value;
+  var rdv=document.getElementById('an-rdv').value;
+  var text=document.getElementById('an-text').value.trim();
+  if(!consId||!text){alert('Selectionnez un conseiller et collez la retranscription.');return;}
+  var cons=_st.conseillers.find(function(x){return x.id===consId;});
+  if(!cons)return;
+  var blocs=getBlocs()[rdv];
+  if(!blocs)return;
+
+  document.getElementById('an-result').innerHTML='<div class="loading"><div class="spinner"></div>Analyse en cours par Claude...</div>';
+  document.getElementById('an-result').style.display='block';
+  document.getElementById('an-submit').disabled=true;
+
+  var blocsList='';
+  ['tech','com','pro'].forEach(function(dim){
+    var dlbl={'tech':'Technique','com':'Commercial','pro':'Professionnalisme'}[dim];
+    blocsList+='\n'+dlbl+':\n'+blocs[dim].map(function(b,i){return'  '+(i+1)+'. '+b;}).join('\n');
+  });
+
+  var prompt='Tu es un expert en formation commerciale pour un cabinet de gestion de patrimoine (Stellar Invest).\n\n'
+    +'Analyse cette retranscription d\'un rendez-vous de type "'+blocs.label+'" realise par '+cons.name+'.\n\n'
+    +'BLOCS D\'EVALUATION ATTENDUS POUR CE TYPE DE RDV:\n'+blocsList+'\n\n'
+    +'RETRANSCRIPTION DU RENDEZ-VOUS:\n'+text+'\n\n'
+    +'Reponds UNIQUEMENT en JSON valide avec cette structure exacte:\n'
+    +'{\n'
+    +'"synthese": "synthese globale en 3-4 phrases",\n'
+    +'"points_forts": ["point 1", "point 2", "point 3"],\n'
+    +'"points_faibles": ["point 1", "point 2", "point 3"],\n'
+    +'"oublis": ["element oublie 1", "element oublie 2"],\n'
+    +'"score_tech": 72,\n'
+    +'"score_com": 68,\n'
+    +'"score_pro": 75,\n'
+    +'"qualite_commerciale": "evaluation en 2-3 phrases",\n'
+    +'"qualite_technique": "evaluation en 2-3 phrases",\n'
+    +'"professionnalisme": "evaluation en 2-3 phrases",\n'
+    +'"objections_detectees": ["objection 1", "objection 2"],\n'
+    +'"qualite_reponses_objections": "evaluation en 2-3 phrases",\n'
+    +'"recommandations": ["recommandation 1", "recommandation 2", "recommandation 3"],\n'
+    +'"appreciation_globale": "appreciation en 1 phrase"\n'
+    +'}';
+
+  try{
+    var resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]})
+    });
+    var data=await resp.json();
+    if(data.error){throw new Error(data.error.message);}
+    var raw=data.content[0].text.trim();
+    // Extract JSON
+    var jsonMatch=raw.match(/\{[\s\S]*\}/);
+    if(!jsonMatch)throw new Error('Reponse invalide');
+    var analysis=JSON.parse(jsonMatch[0]);
+    displayAnalysis(analysis,consId,rdv,cons.name,blocs.label);
+  }catch(e){
+    document.getElementById('an-result').innerHTML='<div class="al al-crit">Erreur analyse: '+e.message+'</div>';
+    document.getElementById('an-submit').disabled=false;
+  }
+}
+
+var _currentAnalysis=null;
+
+function displayAnalysis(a,consId,rdv,consName,rdvLabel){
+  _currentAnalysis={analysis:a,consId:consId,rdv:rdv};
+  var g=Math.round(a.score_tech*0.35+a.score_com*0.40+a.score_pro*0.25);
+  var l=lv(g);
+  var h='<div style="border:2px solid var(--g);border-radius:var(--rl);padding:20px;margin-top:16px">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--bd)">';
+  h+='<div><div style="font-size:16px;font-weight:700;color:var(--n)">Analyse IA — '+consName+'</div>';
+  h+='<div class="fs12 mu">'+rdvLabel+' — par Claude AI</div></div>';
+  h+='<div style="text-align:center"><strong style="font-size:36px;color:'+l.c+'">'+g+'</strong><div class="fs11 mu">/100</div><span class="badge '+l.cls+'">'+l.lbl+'</span></div></div>';
+  // Scores
+  h+='<div class="g3 mb2" style="gap:10px">';
+  h+='<div style="text-align:center;padding:12px;background:'+sc(a.score_tech)+'18;border-radius:var(--r)"><div class="fs11 mu">Technique</div>';
+  h+='<input type="number" id="adj-tech" value="'+a.score_tech+'" min="0" max="100" style="font-size:22px;font-weight:700;color:'+sc(a.score_tech)+';width:70px;border:none;background:transparent;text-align:center" oninput="updateAdjScore()"></div>';
+  h+='<div style="text-align:center;padding:12px;background:'+sc(a.score_com)+'18;border-radius:var(--r)"><div class="fs11 mu">Commercial</div>';
+  h+='<input type="number" id="adj-com" value="'+a.score_com+'" min="0" max="100" style="font-size:22px;font-weight:700;color:'+sc(a.score_com)+';width:70px;border:none;background:transparent;text-align:center" oninput="updateAdjScore()"></div>';
+  h+='<div style="text-align:center;padding:12px;background:'+sc(a.score_pro)+'18;border-radius:var(--r)"><div class="fs11 mu">Professionnalisme</div>';
+  h+='<input type="number" id="adj-pro" value="'+a.score_pro+'" min="0" max="100" style="font-size:22px;font-weight:700;color:'+sc(a.score_pro)+';width:70px;border:none;background:transparent;text-align:center" oninput="updateAdjScore()"></div>';
+  h+='</div>';
+  h+='<div id="adj-global-badge" style="text-align:center;margin-bottom:16px"><span class="badge '+l.cls+'" style="font-size:13px;padding:4px 16px" id="adj-global-lbl">Score ajuste : '+g+'</span></div>';
+  // Synthese
+  h+='<div class="sep">Synthese globale</div><div class="fs12" style="background:var(--gp);padding:12px;border-radius:var(--r);margin-bottom:12px">'+a.synthese+'</div>';
+  h+='<div class="sep">Appreciation</div><div class="fs12 mu" style="padding:8px 0">'+a.appreciation_globale+'</div>';
+  // Points forts / faibles
+  h+='<div class="g2 mb2" style="gap:12px">';
+  h+='<div><div class="sep">Points forts</div>'+a.points_forts.map(function(p){return'<div class="al al-ok" style="margin-bottom:4px">+ '+p+'</div>';}).join('')+'</div>';
+  h+='<div><div class="sep">Points faibles</div>'+a.points_faibles.map(function(p){return'<div class="al al-warn" style="margin-bottom:4px">- '+p+'</div>';}).join('')+'</div>';
+  h+='</div>';
+  // Oublis
+  if(a.oublis&&a.oublis.length){
+    h+='<div class="sep">Elements oublies ou imprecis</div>';
+    h+=a.oublis.map(function(o){return'<div class="al al-crit" style="margin-bottom:4px">! '+o+'</div>';}).join('');
+  }
+  // Qualites
+  h+='<div class="g3 mb2" style="gap:10px;margin-top:12px">';
+  h+='<div class="card"><div class="card-title">Commercial</div><div class="fs12">'+a.qualite_commerciale+'</div></div>';
+  h+='<div class="card"><div class="card-title">Technique</div><div class="fs12">'+a.qualite_technique+'</div></div>';
+  h+='<div class="card"><div class="card-title">Professionnalisme</div><div class="fs12">'+a.professionnalisme+'</div></div>';
+  h+='</div>';
+  // Objections
+  if(a.objections_detectees&&a.objections_detectees.length){
+    h+='<div class="sep">Objections detectees</div>';
+    h+=a.objections_detectees.map(function(o){return'<span style="display:inline-block;background:var(--nm);color:#fff;border-radius:20px;padding:3px 10px;font-size:11px;margin:2px">'+o+'</span>';}).join(' ');
+    h+='<div class="fs12 mu" style="margin-top:8px">'+a.qualite_reponses_objections+'</div>';
+  }
+  // Recommandations
+  h+='<div class="sep">Recommandations</div>';
+  h+=a.recommandations.map(function(r,i){return'<div class="drill-card"><div class="drill-title">Recommandation '+(i+1)+'</div><div class="drill-body">'+r+'</div></div>';}).join('');
+  // Actions
+  h+='<div class="flex gap2 mt3">';
+  h+='<button class="btn btn-g f1" style="justify-content:center" onclick="saveAnalysis()">Enregistrer dans la fiche conseiller</button>';
+  h+='<button class="btn btn-o" onclick="document.getElementById(\'an-result\').style.display=\'none\';document.getElementById(\'an-submit\').disabled=false;">Annuler</button>';
+  h+='</div></div>';
+  document.getElementById('an-result').innerHTML=h;
+  document.getElementById('an-submit').disabled=false;
+}
+
+function updateAdjScore(){
+  var t=parseInt(document.getElementById('adj-tech').value)||0;
+  var c=parseInt(document.getElementById('adj-com').value)||0;
+  var p=parseInt(document.getElementById('adj-pro').value)||0;
+  var g=Math.round(t*0.35+c*0.40+p*0.25);
+  var l=lv(g);
+  var badge=document.getElementById('adj-global-lbl');
+  if(badge){badge.textContent='Score ajuste : '+g;badge.className='badge '+l.cls;}
+}
+
+async function saveAnalysis(){
+  if(!_currentAnalysis)return;
+  var t=parseInt(document.getElementById('adj-tech').value)||_currentAnalysis.analysis.score_tech;
+  var c=parseInt(document.getElementById('adj-com').value)||_currentAnalysis.analysis.score_com;
+  var p=parseInt(document.getElementById('adj-pro').value)||_currentAnalysis.analysis.score_pro;
+  var g=Math.round(t*0.35+c*0.40+p*0.25);
+  var today=new Date().toISOString().split('T')[0];
+  var payload={
+    cons_id:_currentAnalysis.consId,
+    rdv:_currentAnalysis.rdv,
+    eval_type:'Analyse RDV',
+    source:'ia',
+    manager:_curMgr()||'Manager',
+    eval_date:today,
+    score_tech:t,score_com:c,score_pro:p,score_global:g,
+    blocs_tech:[],blocs_com:[],blocs_pro:[],objs:[],
+    synthese:_currentAnalysis.analysis.synthese,
+    ai_report:_currentAnalysis.analysis
+  };
+  var res=await _sb.from('evaluations').insert(payload);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();
+  toast('Analyse enregistree dans la fiche conseiller',true);
+  // Reset form
+  document.getElementById('an-text').value='';
+  document.getElementById('an-result').style.display='none';
+  _currentAnalysis=null;
+  go('equipe');
+}
+
+// ══ MODULE PLANNING ══
+async function savePlanningItem(){
+  var consId=document.getElementById('pl-cons').value;
+  var rdv=document.getElementById('pl-rdv').value;
+  var evalType=document.getElementById('pl-type').value;
+  var date=document.getElementById('pl-date').value;
+  var notes=document.getElementById('pl-notes').value.trim();
+  var priority=document.getElementById('pl-priority').value;
+  if(!consId||!date){alert('Conseiller et date obligatoires.');return;}
+  var payload={cons_id:consId,rdv:rdv,eval_type:evalType,planned_date:date,manager:_curMgr()||'Manager',notes:notes,priority:priority,status:'a_faire'};
+  var res=await _sb.from('planning').insert(payload);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();closeModal('mod-planning');renderWeekPlanning();
+  toast('Evaluation planifiee',true);
+}
+
+async function updatePlanningStatus(id,status){
+  await _sb.from('planning').update({status:status}).eq('id',id);
+  await sbLoad();renderWeekPlanning();
+}
+
+async function deletePlanningItem(id){
+  if(!confirm('Supprimer cette planification ?'))return;
+  await _sb.from('planning').delete().eq('id',id);
+  await sbLoad();renderWeekPlanning();
+}
+
+var _weekOffset=0;
+function getWeekDates(offset){
+  var now=new Date();
+  var day=now.getDay();
+  var diff=now.getDate()-day+(day===0?-6:1)+offset*7;
+  var monday=new Date(now.setDate(diff));
+  var days=[];
+  for(var i=0;i<7;i++){
+    var d=new Date(monday);d.setDate(monday.getDate()+i);
+    days.push(d);
+  }
+  return days;
+}
+
+function renderWeekPlanning(){
+  var el=document.getElementById('p-planning');if(!el)return;
+  var days=getWeekDates(_weekOffset);
+  var dayNames=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  var myItems=isAdmin()?_st.planning:_st.planning.filter(function(p){return p.manager===_curMgr();});
+  var today=new Date().toISOString().split('T')[0];
+  // Count late
+  var late=myItems.filter(function(p){return p.status==='a_faire'&&p.planned_date<today;}).length;
+  var h='<div class="flex jb ac mb3">';
+  h+='<div><div style="font-size:20px;font-weight:700;color:var(--n)">Planning de la semaine</div>';
+  h+='<div class="fs12 mu mt1">'+days[0].toLocaleDateString('fr-FR')+' — '+days[6].toLocaleDateString('fr-FR')+'</div></div>';
+  h+='<div class="flex gap2 ac">';
+  if(late>0)h+='<span style="background:var(--crit);color:#fff;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:700">'+late+' en retard</span>';
+  h+='<button class="btn btn-o btn-sm" onclick="_weekOffset--;renderWeekPlanning()">← Prev</button>';
+  h+='<button class="btn btn-o btn-sm" onclick="_weekOffset=0;renderWeekPlanning()">Aujourd\'hui</button>';
+  h+='<button class="btn btn-o btn-sm" onclick="_weekOffset++;renderWeekPlanning()">Suiv →</button>';
+  h+='<button class="btn btn-g btn-sm" onclick="openPlanningModal()">+ Planifier</button></div></div>';
+  // Week grid
+  h+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px">';
+  days.forEach(function(d,i){
+    var ds=d.toISOString().split('T')[0];
+    var isToday=ds===today;
+    var dayItems=myItems.filter(function(p){return p.planned_date===ds;});
+    h+='<div style="border:1px solid '+(isToday?'var(--g)':'var(--bd)')+';border-radius:var(--r);padding:8px;background:'+(isToday?'var(--gp)':'var(--w)')+';min-height:120px">';
+    h+='<div style="font-size:11px;font-weight:700;color:'+(isToday?'var(--g)':'var(--mu)')+';margin-bottom:6px">'+dayNames[i]+' '+d.getDate()+'</div>';
+    dayItems.forEach(function(item){
+      var cons=_st.conseillers.find(function(c){return c.id===item.cons_id;});
+      var isLate=item.status==='a_faire'&&ds<today;
+      var statusColor=item.status==='realise'?'var(--tb)':isLate?'var(--crit)':'var(--moy)';
+      var statusLabel=item.status==='realise'?'Fait':isLate?'Retard':'A faire';
+      h+='<div style="background:'+statusColor+'15;border:1px solid '+statusColor+'40;border-radius:5px;padding:5px;margin-bottom:4px;font-size:10px">';
+      h+='<div style="font-weight:700;color:var(--n)">'+(cons?cons.name:'?')+'</div>';
+      h+='<div style="color:var(--mu)">'+item.eval_type+' — '+DB.rdv()[item.rdv].label+'</div>';
+      h+='<div style="display:flex;align-items:center;gap:4px;margin-top:3px">';
+      h+='<span style="background:'+statusColor+';color:#fff;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700">'+statusLabel+'</span>';
+      if(item.priority==='haute')h+='<span style="color:var(--crit);font-weight:700">!</span>';
+      h+='</div>';
+      if(item.notes)h+='<div style="color:var(--mu);margin-top:2px;font-size:9px">'+item.notes+'</div>';
+      h+='<div style="display:flex;gap:3px;margin-top:4px">';
+      if(item.status!=='realise')h+='<button style="font-size:9px;padding:2px 5px;background:var(--tb);color:#fff;border:none;border-radius:3px;cursor:pointer" onclick="updatePlanningStatus(\''+item.id+'\',\'realise\')">Fait</button>';
+      h+='<button style="font-size:9px;padding:2px 5px;background:var(--crit-bg);color:var(--crit);border:1px solid var(--crit);border-radius:3px;cursor:pointer" onclick="deletePlanningItem(\''+item.id+'\')">X</button>';
+      h+='</div></div>';
+    });
+    h+='</div>';
+  });
+  h+='</div>';
+  el.innerHTML=h;
+}
+
+function openPlanningModal(){
+  var myCons=myConseillers();
+  var consSelect='<select id="pl-cons" style="width:100%">'+myCons.map(function(c){return'<option value="'+c.id+'">'+c.name+'</option>';}).join('')+'</select>';
+  var h='<div class="modal-title">Planifier une evaluation</div>';
+  h+='<div style="margin-bottom:12px"><label class="lbl">Conseiller</label>'+consSelect+'</div>';
+  h+='<div class="g2 gap2 mb2">';
+  h+='<div><label class="lbl">Type de RDV</label><select id="pl-rdv" style="width:100%"><option value="phoning">Phoning</option><option value="d0">D0 Etude</option><option value="d1scpi">D1 SCPI</option><option value="d1asset">D1 Asset</option><option value="d1pe">D1 PE</option><option value="d2">D2 Closing</option></select></div>';
+  h+='<div><label class="lbl">Type evaluation</label><select id="pl-type" style="width:100%"><option value="Drill">Drill</option><option value="Ecoute">Ecoute</option><option value="Oral">Oral de formation</option><option value="Analyse RDV">Analyse RDV</option></select></div>';
+  h+='</div>';
+  h+='<div class="g2 gap2 mb2">';
+  h+='<div><label class="lbl">Date prevue</label><input type="date" id="pl-date" style="width:100%"></div>';
+  h+='<div><label class="lbl">Priorite</label><select id="pl-priority" style="width:100%"><option value="normale">Normale</option><option value="haute">Haute</option></select></div>';
+  h+='</div>';
+  h+='<div style="margin-bottom:16px"><label class="lbl">Notes</label><input type="text" id="pl-notes" placeholder="Instructions, contexte..." style="width:100%"></div>';
+  h+='<div class="flex gap2"><button class="btn btn-g f1" style="justify-content:center" onclick="savePlanningItem()">Planifier</button><button class="btn btn-o" onclick="closeModal(\'mod-planning\')">Annuler</button></div>';
+  document.getElementById('mod-planning-body').innerHTML=h;
+  // Set default date to tomorrow
+  var tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);
+  document.getElementById('pl-date').value=tomorrow.toISOString().split('T')[0];
+  document.getElementById('mod-planning').classList.remove('hidden');
+}
 
 </script>
 
