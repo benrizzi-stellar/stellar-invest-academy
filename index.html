@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Stellar Invest Academy</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -140,6 +141,7 @@ select:focus,input:focus,textarea:focus{border-color:var(--g)}
 .sp-new{background:var(--bon-bg);color:var(--bon)}
 .rdv-pill{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:var(--r);border:1px solid var(--bd);margin:4px 0;font-size:12px;background:var(--w)}
 .ai-badge{display:inline-flex;align-items:center;gap:3px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:700;letter-spacing:.5px}
+.ai-badge{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:700;display:inline-flex;align-items:center}
 .freq-badge{display:inline-flex;align-items:center;gap:4px;background:var(--bon-bg);color:var(--bon);border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700}
 
 /* MODAL */
@@ -349,6 +351,39 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 </div>
 
 </div></div>
+
+<!-- ANALYSE IA -->
+<div id="p-analyse" class="panel">
+  <div style="font-size:20px;font-weight:700;color:var(--n)" class="mb3">Analyse IA — Retranscription RDV</div>
+  <div class="card mb2">
+    <div class="sep">Configuration</div>
+    <div class="g3 gap2">
+      <div><label class="lbl">Conseiller</label><select id="an-cons" style="width:100%"></select></div>
+      <div><label class="lbl">Type de RDV</label>
+        <select id="an-rdv" style="width:100%">
+          <option value="phoning">Phoning</option>
+          <option value="d0">D0 Etude patrimoniale</option>
+          <option value="d1scpi">D1 SCPI</option>
+          <option value="d1asset">D1 Asset Management</option>
+          <option value="d1pe">D1 Private Equity</option>
+          <option value="d2">D2 Closing</option>
+        </select>
+      </div>
+      <div><label class="lbl">Date du RDV</label><input type="date" id="an-date" style="width:100%"></div>
+    </div>
+  </div>
+  <div class="card mb2">
+    <div class="sep">Retranscription du rendez-vous</div>
+    <div class="fs11 mu mb2">Copiez-collez la retranscription complete du rendez-vous ci-dessous.</div>
+    <textarea id="an-text" rows="12" placeholder="Collez ici la retranscription complete du rendez-vous..." style="width:100%;resize:vertical;font-size:12px;line-height:1.6;font-family:system-ui"></textarea>
+  </div>
+  <button id="an-submit" class="btn btn-g mb2" onclick="analyzeTranscript()">Lancer l'analyse IA</button>
+  <div id="an-result" style="display:none"></div>
+</div>
+
+<!-- PLANNING -->
+<div id="p-planning" class="panel"></div>
+
 
 <!-- MODAL MANAGER -->
 <div id="mod-mgr" class="modal-bg hidden">
@@ -1636,6 +1671,14 @@ function openPlanningModal(){
 }
 
 </script>
+
+
+<!-- MODAL PLANNING -->
+<div id="mod-planning" class="modal-bg hidden">
+  <div class="modal" style="width:520px">
+    <div id="mod-planning-body"></div>
+  </div>
+</div>
 
 </body>
 </html>
