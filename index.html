@@ -1988,40 +1988,6 @@ async function rejectSuggestion(id){
   await _sb.from('objections_suggestions').update({status:'rejected'}).eq('id',id);
   await sbLoad();renderSuggestions();toast('Suggestion refusee',true);
 }
-
-
-ent.getElementById('plan-date').value;
-  var prio=document.getElementById('plan-prio').value;
-  if(!consId||!date){alert('Remplissez tous les champs obligatoires.');return;}
-  var payload={
-    cons_id:consId,rdv:rdv,eval_type:type,
-    manager:manager,eval_date:date,
-    score_tech:0,score_com:0,score_pro:0,score_global:0,
-    synthese:'',blocs_tech:[],blocs_com:[],blocs_pro:[],objs:[],
-    planned:true,planned_priority:prio,planned_status:'a_faire'
-  };
-  var res=await _sb.from('evaluations').insert(payload);
-  if(res.error){alert('Erreur: '+res.error.message);return;}
-  await sbLoad();renderPlanning();
-  closeModal('mod-plan');
-  toast('Evaluation planifiee V',true);
-}
-
-async function completePlannedEval(eid){
-  // Mark as done and open eval form
-  var e=_st.evals.find(function(x){return x.id===eid;});
-  if(!e)return;
-  go('eval');
-  setTimeout(function(){
-    var cs=document.getElementById('ev-cons');
-    var rv=document.getElementById('ev-rdv');
-    var tp=document.getElementById('ev-type');
-    if(cs)cs.value=e.cons_id;
-    if(rv){rv.value=e.rdv;onRdvChange();}
-    if(tp)tp.value=e.eval_type||'Drill';
-  },100);
-}
-
 async function deletePlannedEval(eid){
   if(!confirm('Supprimer cette evaluation planifiee ?'))return;
   await _sb.from('evaluations').delete().eq('id',eid);
