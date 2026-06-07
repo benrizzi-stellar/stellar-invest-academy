@@ -1256,10 +1256,10 @@ function showFicheTabs(cid){
   var tabDiv=document.createElement('div');
   tabDiv.id='fiche-header-tabs';
   tabDiv.style.cssText='display:flex;gap:4px;margin-top:10px;flex-wrap:wrap';
-  tabDiv.innerHTML='<button class="seg-b on" onclick="showFicheTab('eval',this)">Evaluations</button>'
-    +'<button class="seg-b" onclick="showFicheTab('planning',this)">Planning</button>'
-    +'<button class="seg-b" onclick="showFicheTab('suivi',this)">Suivi managerial</button>'
-    +'<button class="seg-b" onclick="showFicheTab('rh',this)">Points RH</button>';
+  tabDiv.innerHTML='<button class="seg-b on" onclick="showFicheTab(\'eval\',this)">Evaluations</button>'
+    +'<button class="seg-b" onclick="showFicheTab(\'planning\',this)">Planning</button>'
+    +'<button class="seg-b" onclick="showFicheTab(\'suivi\',this)">Suivi managerial</button>'
+    +'<button class="seg-b" onclick="showFicheTab(\'rh\',this)">Points RH</button>';
   titleEl.parentNode.insertBefore(tabDiv,titleEl.nextSibling);
 }
 
