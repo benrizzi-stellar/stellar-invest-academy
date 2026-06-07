@@ -1841,7 +1841,7 @@ function renderWeekPlanning(){
       var isLate=item.status==='a_faire'&&ds<today;
       var sc2=item.status==='realise'?'var(--tb)':isLate?'var(--crit)':'var(--bon)';
       var sl=item.status==='realise'?'Fait':isLate?'Retard':'A faire';
-      h+='<div style="background:'+sc2+'12;border:1px solid '+sc2+'40;border-radius:5px;padding:6px;margin-bottom:4px;cursor:pointer" onclick="openPlanningItemEval(''+item.id+'')">';
+      h+='<div style="background:'+sc2+'12;border:1px solid '+sc2+'40;border-radius:5px;padding:6px;margin-bottom:4px;cursor:pointer" onclick="openPlanningItemEval('\''+item.id+'\'')">';
       h+='<div style="font-weight:700;font-size:11px;color:var(--n)">'+(cons?cons.name:'?')+'</div>';
       h+='<div style="font-size:10px;color:var(--mu)">'+item.eval_type+' -- '+(DB.rdv()[item.rdv]?DB.rdv()[item.rdv].label:item.rdv)+'</div>';
       h+='<div style="display:flex;align-items:center;gap:4px;margin-top:3px">';
@@ -1850,9 +1850,9 @@ function renderWeekPlanning(){
       h+='</div>';
       if(item.notes)h+='<div style="color:var(--mu);font-size:9px;margin-top:2px">'+item.notes+'</div>';
       h+='<div style="display:flex;gap:3px;margin-top:5px">';
-      if(item.status!=='realise')h+='<button style="font-size:9px;padding:2px 6px;background:var(--tb);color:#fff;border:none;border-radius:3px;cursor:pointer" onclick="event.stopPropagation();markPlanDone(''+item.id+'')">Fait</button>';
-      if(item.status!=='reporte')h+='<button style="font-size:9px;padding:2px 6px;background:var(--moy-bg);color:var(--moy);border:1px solid var(--moy);border-radius:3px;cursor:pointer" onclick="event.stopPropagation();markPlanReporte(''+item.id+'')">Reporter</button>';
-      h+='<button style="font-size:9px;padding:2px 6px;background:var(--crit-bg);color:var(--crit);border:1px solid var(--crit);border-radius:3px;cursor:pointer" onclick="event.stopPropagation();deletePlanningItem(''+item.id+'')">X</button>';
+      if(item.status!=='realise')h+='<button style="font-size:9px;padding:2px 6px;background:var(--tb);color:#fff;border:none;border-radius:3px;cursor:pointer" onclick="event.stopPropagation();markPlanDone('\''+item.id+'\'')">Fait</button>';
+      if(item.status!=='reporte')h+='<button style="font-size:9px;padding:2px 6px;background:var(--moy-bg);color:var(--moy);border:1px solid var(--moy);border-radius:3px;cursor:pointer" onclick="event.stopPropagation();markPlanReporte('\''+item.id+'\'')">Reporter</button>';
+      h+='<button style="font-size:9px;padding:2px 6px;background:var(--crit-bg);color:var(--crit);border:1px solid var(--crit);border-radius:3px;cursor:pointer" onclick="event.stopPropagation();deletePlanningItem('\''+item.id+'\'')">X</button>';
       h+='</div></div>';
     });
     h+='</div>';
@@ -1864,12 +1864,12 @@ function renderWeekPlanning(){
     h+='<div class="card mt2"><div class="card-title" style="color:var(--crit)">En retard ('+overdue.length+')</div>';
     h+=overdue.map(function(item){
       var cons=_st.conseillers.find(function(c){return c.id===item.cons_id;});
-      return'<div class="flex ac gap2" style="padding:8px 0;border-bottom:1px solid var(--bd);cursor:pointer" onclick="openPlanningItemEval(''+item.id+'')">'
+      return'<div class="flex ac gap2" style="padding:8px 0;border-bottom:1px solid var(--bd);cursor:pointer" onclick="openPlanningItemEval('\''+item.id+'\'')">'
         +'<div class="ava" style="width:28px;height:28px;font-size:10px;background:var(--crit)">'+ini(cons?cons.name:'?')+'</div>'
         +'<div class="f1"><div class="fs12 bold">'+(cons?cons.name:'?')+'</div>'
         +'<div class="fs11 mu">'+item.eval_type+' -- '+(DB.rdv()[item.rdv]?DB.rdv()[item.rdv].label:item.rdv)+'</div></div>'
         +'<span class="fs11 mu">Prevu le '+fd(item.planned_date)+'</span>'
-        +'<button class="btn btn-g btn-sm" onclick="event.stopPropagation();openPlanningItemEval(''+item.id+'')">Evaluer</button>'
+        +'<button class="btn btn-g btn-sm" onclick="event.stopPropagation();openPlanningItemEval('\''+item.id+'\'')">Evaluer</button>'
         +'</div>';
     }).join('')+'</div>';
   }
