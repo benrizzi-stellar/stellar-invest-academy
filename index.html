@@ -240,6 +240,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
     <div style="font-size:18px;font-weight:700;color:var(--n)" id="fiche-title"></div>
   </div>
   <div id="fiche-content"></div><div id="fiche-rh-content" style="display:none"></div>
+<div id="fiche-planning-content" style="display:none"></div>
+<div id="fiche-suivi-content" style="display:none"></div>
 </div>
 
 <!-- ÉVALUATION -->
@@ -1793,6 +1795,2038 @@ function renderWeekPlanning(){
 }
 
 function openPlanningModal(){
+  // Use full modal if available
+  var fullModal=document.getElementById('mod-planning-full');
+  if(fullModal){
+    var myCons=myConseillers();
+    var mgrs=isAdmin()?Object.keys(USERS):[_curMgr()];
+    var consEl=document.getElementById('pl-cons');
+    var mgrEl=document.getElementById('pl-mgr');
+    if(consEl)consEl.innerHTML=myCons.map(function(c){return'<option value="'+c.id+'">'+c.name+'</option>';}).join('');
+    if(mgrEl)mgrEl.innerHTML=mgrs.map(function(n){return'<option value="'+n+'"'+(n===_curMgr()?' selected':'')+'>'+n+'</option>';}).join('');
+    var dateEl=document.getElementById('pl-date');
+    if(dateEl)dateEl.value=new Date().toISOString().split('T')[0];
+    fullModal.classList.remove('hidden');
+    return;
+  }
+  // Fallback old modal
+  function openPlanningModalOld(){
+  var myCons=myConseillers();
+  var consSelect='<select id="pl-cons" style="width:100%">'+myCons.map(function(c){return'<option value="'+c.id+'">'+c.name+'</option>';}).join('')+'</select>';
+  var h='<div class="modal-title">Planifier une evaluation</div>';
+  h+='<div style="margin-bottom:12px"><label class="lbl">Conseiller</label>'+consSelect+'</div>';
+  h+='<div class="g2 gap2 mb2">';
+  h+='<div><label class="lbl">Type de RDV</label><select id="pl-rdv" style="width:100%"><option value="phoning">Phoning</option><option value="d0">D0 Etude</option><option value="d1scpi">D1 SCPI</option><option value="d1asset">D1 Asset</option><option value="d1pe">D1 PE</option><option value="d2">D2 Closing</option></select></div>';
+  h+='<div><label class="lbl">Type evaluation</label><select id="pl-type" style="width:100%"><option value="Drill">Drill</option><option value="Ecoute">Ecoute</option><option value="Oral">Oral de formation</option><option value="Analyse RDV">Analyse RDV</option></select></div>';
+  h+='</div>';
+  h+='<div class="g2 gap2 mb2">';
+  h+='<div><label class="lbl">Date prevue</label><input type="date" id="pl-date" style="width:100%"></div>';
+  h+='<div><label class="lbl">Priorite</label><select id="pl-priority" style="width:100%"><option value="normale">Normale</option><option value="haute">Haute</option></select></div>';
+  h+='</div>';
+  h+='<div style="margin-bottom:16px"><label class="lbl">Notes</label><input type="text" id="pl-notes" placeholder="Instructions, contexte..." style="width:100%"></div>';
+  h+='<div class="flex gap2"><button class="btn btn-g f1" style="justify-content:center" onclick="savePlanningItem()">Planifier</button><button class="btn btn-o" onclick="closeModal(\'mod-planning\')">Annuler</button></div>';
+  document.getElementById('mod-planning-body').innerHTML=h;
+  // Set default date to tomorrow
+  var tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);
+  document.getElementById('pl-date').value=tomorrow.toISOString().split('T')[0];
+  document.getElementById('mod-planning').classList.remove('hidden');
+}
+openPlanningModalOld();
+}
+
+
+// ══ RH MODULE ══
+function openFicheRH(cid){
+  var c=_st.conseillers.find(function(x){return x.id===cid;});if(!c)return;
+  var entries=(_st.rh||[]).filter(function(e){return e.cons_id===cid;});
+  var el=document.getElementById('fiche-rh-content');if(!el)return;
+
+  var h='<div class="flex jb ac mb3">'
+    +'<div style="font-size:16px;font-weight:700;color:var(--n)">Commentaires & Points RH — '+c.name+'</div>'
+    +'<div class="flex gap2">'
+    +'<button class="btn btn-n btn-sm" onclick="openRHModal(\'integration\',\''+cid+'\')">+ Point integration</button>'
+    +'<button class="btn btn-n btn-sm" onclick="openRHModal(\'annuel\',\''+cid+'\')">+ Point annuel</button>'
+    +'<button class="btn btn-o btn-sm" onclick="openRHModal(\'commentaire\',\''+cid+'\')">+ Commentaire</button>'
+    +'</div></div>';
+
+  if(!entries.length){
+    h+='<div class="card" style="text-align:center;padding:30px;color:var(--mu)">Aucun commentaire ni point RH enregistre.</div>';
+  }else{
+    var typeIcons={integration:'🎯',annuel:'📊',commentaire:'💬'};
+    var typeColors={integration:'var(--bon-bg)',annuel:'var(--elite-bg)',commentaire:'var(--tb-bg)'};
+    entries.forEach(function(entry){
+      var content=entry.content||{};
+      h+='<div class="card mb2">';
+      h+='<div class="flex jb ac mb2">';
+      h+='<div class="flex ac gap2"><span style="font-size:18px">'+(typeIcons[entry.type]||'📝')+'</span>';
+      h+='<div><strong style="font-size:14px">'+entry.title+'</strong>';
+      h+='<div class="fs11 mu">'+fd(entry.created_at)+' — par '+entry.created_by+'</div></div></div>';
+      h+='<div class="flex gap1">';
+      if(isAdmin()||entry.created_by===_curMgr()){
+        h+='<button class="btn btn-o btn-sm" onclick="editRHEntry(\''+entry.id+'\')">Modifier</button>';
+        h+='<button class="btn btn-r btn-sm" onclick="deleteRHEntry(\''+entry.id+'\')">Supprimer</button>';
+      }
+      h+='</div></div>';
+      // Display content based on type
+      if(entry.type==='commentaire'){
+        h+='<div class="fs12" style="background:var(--gp);padding:10px;border-radius:var(--r)">'+( content.texte||'')+'</div>';
+      }else{
+        // Structured point
+        if(content.bilan)h+='<div class="sep">Bilan</div><div class="fs12">'+content.bilan+'</div>';
+        if(content.posture)h+='<div class="sep">Posture & comportement</div><div class="fs12">'+content.posture+'</div>';
+        if(content.objectifs)h+='<div class="sep">Objectifs N+1</div><div class="fs12">'+content.objectifs+'</div>';
+        if(content.besoins)h+='<div class="sep">Besoins accompagnement</div><div class="fs12">'+content.besoins+'</div>';
+        if(content.engagements)h+='<div class="sep">Engagements</div><div class="fs12">'+content.engagements+'</div>';
+        if(content.volume_signe)h+='<div class="flex gap2 mt2"><span class="freq-badge">Volume signe: '+content.volume_signe+'</span></div>';
+        if(content.texte_libre)h+='<div class="sep">Notes libres</div><div class="fs12 mu">'+content.texte_libre+'</div>';
+      }
+      h+='</div>';
+    });
+  }
+  el.innerHTML=h;
+}
+
+function openRHModal(type,cid){
+  var c=_st.conseillers.find(function(x){return x.id===cid;});if(!c)return;
+  var titles={integration:'Point d\'integration (6 mois)',annuel:'Point annuel',commentaire:'Commentaire / Suivi RH'};
+  var h='<div class="modal-title">'+titles[type]+' — '+c.name+'</div>';
+  h+='<input type="hidden" id="rh-cons-id" value="'+cid+'">';
+  h+='<input type="hidden" id="rh-type" value="'+type+'">';
+  h+='<input type="hidden" id="rh-entry-id" value="">';
+  h+='<div style="margin-bottom:12px"><label class="lbl">Titre</label><input type="text" id="rh-title" placeholder="ex: Point annuel 2025" style="width:100%"></div>';
+  if(type==='commentaire'){
+    h+='<div style="margin-bottom:12px"><label class="lbl">Commentaire</label><textarea id="rh-texte" rows="6" placeholder="Commentaire, observation, suivi..." style="width:100%;resize:vertical"></textarea></div>';
+  }else{
+    if(type==='annuel'){
+      h+='<div style="margin-bottom:10px"><label class="lbl">Volume signe (annee ecoulee)</label><input type="text" id="rh-volume" placeholder="ex: 2.4M EUR" style="width:100%"></div>';
+    }
+    h+='<div style="margin-bottom:10px"><label class="lbl">Bilan '+(type==='integration'?'des 6 premiers mois':'de l\'annee ecoulee')+'</label><textarea id="rh-bilan" rows="3" placeholder="Reussites, points forts, resultats..." style="width:100%;resize:vertical"></textarea></div>';
+    h+='<div style="margin-bottom:10px"><label class="lbl">Posture & comportement</label><textarea id="rh-posture" rows="3" placeholder="Integration, comportement, attitude..." style="width:100%;resize:vertical"></textarea></div>';
+    h+='<div style="margin-bottom:10px"><label class="lbl">Objectifs N+1</label><textarea id="rh-objectifs" rows="3" placeholder="Objectifs chiffres, axes de developpement..." style="width:100%;resize:vertical"></textarea></div>';
+    h+='<div style="margin-bottom:10px"><label class="lbl">Besoins en accompagnement</label><textarea id="rh-besoins" rows="2" placeholder="Formations, outils, support management..." style="width:100%;resize:vertical"></textarea></div>';
+    h+='<div style="margin-bottom:10px"><label class="lbl">Engagements & actions immediates</label><textarea id="rh-engagements" rows="2" placeholder="Action prioritaire, objectif retenu..." style="width:100%;resize:vertical"></textarea></div>';
+    h+='<div style="margin-bottom:12px"><label class="lbl">Notes libres</label><textarea id="rh-texte-libre" rows="3" placeholder="Observations supplementaires..." style="width:100%;resize:vertical"></textarea></div>';
+  }
+  h+='<div class="flex gap2"><button class="btn btn-g f1" style="justify-content:center" onclick="saveRHEntry()">Enregistrer</button><button class="btn btn-o" onclick="closeModal(\'mod-rh\')">Annuler</button></div>';
+  document.getElementById('mod-rh-body').innerHTML=h;
+  document.getElementById('mod-rh').classList.remove('hidden');
+}
+
+async function saveRHEntry(){
+  var cid=document.getElementById('rh-cons-id').value;
+  var type=document.getElementById('rh-type').value;
+  var title=document.getElementById('rh-title').value.trim()||type;
+  var eid=document.getElementById('rh-entry-id').value;
+  var content={};
+  if(type==='commentaire'){
+    content.texte=document.getElementById('rh-texte').value.trim();
+  }else{
+    if(type==='annuel'){content.volume_signe=document.getElementById('rh-volume').value.trim();}
+    content.bilan=document.getElementById('rh-bilan').value.trim();
+    content.posture=document.getElementById('rh-posture').value.trim();
+    content.objectifs=document.getElementById('rh-objectifs').value.trim();
+    content.besoins=document.getElementById('rh-besoins').value.trim();
+    content.engagements=document.getElementById('rh-engagements').value.trim();
+    content.texte_libre=document.getElementById('rh-texte-libre').value.trim();
+  }
+  var payload={cons_id:cid,type:type,title:title,content:content,created_by:_curMgr(),updated_at:new Date().toISOString()};
+  var res=eid?await _sb.from('rh_entries').update(payload).eq('id',eid):await _sb.from('rh_entries').insert(payload);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  closeModal('mod-rh');await sbLoad();
+  // Refresh RH tab
+  var rhEl=document.getElementById('fiche-rh-content');
+  if(rhEl)openFicheRH(cid);
+  toast('Enregistre',true);
+}
+
+async function deleteRHEntry(id){
+  if(!confirm('Supprimer cette entree ?'))return;
+  var entry=(_st.rh||[]).find(function(x){return x.id===id;});
+  var res=await _sb.from('rh_entries').delete().eq('id',id);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();
+  if(entry)openFicheRH(entry.cons_id);
+  toast('Supprime',true);
+}
+
+async function editRHEntry(id){
+  var entry=(_st.rh||[]).find(function(x){return x.id===id;});if(!entry)return;
+  openRHModal(entry.type,entry.cons_id);
+  setTimeout(function(){
+    document.getElementById('rh-entry-id').value=id;
+    document.getElementById('rh-title').value=entry.title||'';
+    var c=entry.content||{};
+    if(entry.type==='commentaire'){var el=document.getElementById('rh-texte');if(el)el.value=c.texte||'';}
+    else{
+      if(document.getElementById('rh-volume'))document.getElementById('rh-volume').value=c.volume_signe||'';
+      ['bilan','posture','objectifs','besoins','engagements'].forEach(function(k){var el=document.getElementById('rh-'+k);if(el)el.value=c[k]||'';});
+      var tl=document.getElementById('rh-texte-libre');if(tl)tl.value=c.texte_libre||'';
+    }
+  },100);
+}
+
+// ══ OBJECTION SUGGESTIONS ══
+function openSuggestObjModal(rdv){
+  document.getElementById('sug-rdv').value=rdv;
+  document.getElementById('sug-text').value='';
+  document.getElementById('mod-suggest').classList.remove('hidden');
+}
+
+async function saveSuggestion(){
+  var rdv=document.getElementById('sug-rdv').value;
+  var text=document.getElementById('sug-text').value.trim();
+  if(!text)return;
+  var res=await _sb.from('objections_suggestions').insert({rdv_type:rdv,text:text,suggested_by:_curMgr(),status:'pending'});
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  closeModal('mod-suggest');await sbLoad();toast('Suggestion envoyee a l\'admin',true);
+}
+
+function renderSuggestions(){
+  if(!isAdmin()){document.getElementById('stab-suggestions').innerHTML='<div class="al al-warn">Acces reserve a l\'administrateur.</div>';return;}
+  var pending=(_st.suggestions||[]).filter(function(s){return s.status==='pending';});
+  if(!pending.length){document.getElementById('stab-suggestions').innerHTML='<div class="al al-ok">Aucune suggestion en attente.</div>';return;}
+  document.getElementById('stab-suggestions').innerHTML=pending.map(function(s){
+    return'<div class="card mb2"><div class="flex jb ac">'
+      +'<div><div class="fs12 bold">'+s.text+'</div><div class="fs11 mu">Type: '+s.rdv_type+' — par '+s.suggested_by+'</div></div>'
+      +'<div class="flex gap1">'
+      +'<button class="btn btn-g btn-sm" onclick="approveSuggestion(\''+s.id+'\')">Valider</button>'
+      +'<button class="btn btn-r btn-sm" onclick="rejectSuggestion(\''+s.id+'\')">Refuser</button>'
+      +'</div></div></div>';
+  }).join('');
+}
+
+async function approveSuggestion(id){
+  var s=(_st.suggestions||[]).find(function(x){return x.id===id;});if(!s)return;
+  var o=getObjs();if(!o[s.rdv_type])o[s.rdv_type]=[];
+  if(!o[s.rdv_type].includes(s.text))o[s.rdv_type].push(s.text);
+  await saveObjs(o);
+  await _sb.from('objections_suggestions').update({status:'approved'}).eq('id',id);
+  await sbLoad();renderSuggestions();toast('Objection validee et ajoutee',true);
+}
+
+async function rejectSuggestion(id){
+  await _sb.from('objections_suggestions').update({status:'rejected'}).eq('id',id);
+  await sbLoad();renderSuggestions();toast('Suggestion refusee',true);
+}
+async function deletePlannedEval(eid){
+  if(!confirm('Supprimer cette evaluation planifiee ?'))return;
+  await _sb.from('evaluations').delete().eq('id',eid);
+  await sbLoad();renderPlanning();
+}
+
+function renderPlanning(){
+  var el=document.getElementById('p-planning');if(!el)return;
+  var now=new Date();
+  // Get start of week + offset
+  var day=now.getDay();var diff=day===0?-6:1-day;
+  var weekStart=new Date(now);weekStart.setDate(now.getDate()+diff+(_planningWeek*7));weekStart.setHours(0,0,0,0);
+  var weekEnd=new Date(weekStart);weekEnd.setDate(weekStart.getDate()+6);weekEnd.setHours(23,59,59,999);
+  var fmt=function(d){return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});};
+  var days=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+
+  // Get planned evals for this week
+  var myC=myConseillers().map(function(c){return c.id;});
+  var weekEvs=_st.evals.filter(function(e){
+    if(!e.planned)return false;
+    if(!myC.includes(e.cons_id)&&!isAdmin())return false;
+    var d=new Date(e.eval_date);
+    return d>=weekStart&&d<=weekEnd;
+  });
+
+  // Count overdue planned
+  var overdue=_st.evals.filter(function(e){
+    if(!e.planned||e.planned_status==='realise')return false;
+    if(!myC.includes(e.cons_id)&&!isAdmin())return false;
+    return new Date(e.eval_date)<now;
+  }).length;
+
+  var h='<div class="flex jb ac mb3">'
+    +'<div><div style="font-size:20px;font-weight:700;color:var(--n)">Planning des evaluations</div>'
+    +'<div class="fs12 mu mt1">Semaine du '+fmt(weekStart)+' au '+fmt(weekEnd)+'</div></div>'
+    +'<div class="flex gap2 ac">'
+    +(overdue>0?'<span style="background:var(--crit-bg);color:var(--crit);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:700">'+overdue+' en retard</span>':'')
+    +'<button class="btn btn-o btn-sm" onclick="_planningWeek--;renderPlanning()">&#8592; Semaine precedente</button>'
+    +'<button class="btn btn-o btn-sm" onclick="_planningWeek=0;renderPlanning()">Aujourd\'hui</button>'
+    +'<button class="btn btn-o btn-sm" onclick="_planningWeek++;renderPlanning()">Semaine suivante &#8594;</button>'
+    +'<button class="btn btn-g btn-sm" onclick="openPlanModal()">+ Planifier</button>'
+    +'</div></div>';
+
+  // Week grid
+  h+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px">';
+  for(var i=0;i<7;i++){
+    var dayDate=new Date(weekStart);dayDate.setDate(weekStart.getDate()+i);
+    var dayStr=dayDate.toISOString().split('T')[0];
+    var isToday=dayStr===now.toISOString().split('T')[0];
+    var dayEvs=weekEvs.filter(function(e){return e.eval_date===dayStr;});
+    h+='<div style="border-radius:var(--rl);border:1px solid '+(isToday?'var(--g)':'var(--bd)')+';background:'+(isToday?'var(--gp)':'var(--w)')+';min-height:120px">'
+      +'<div style="padding:8px 10px;border-bottom:1px solid var(--bd);background:'+(isToday?'var(--g)':'var(--ow)')+';border-radius:var(--rl) var(--rl) 0 0">'
+      +'<div style="font-size:11px;font-weight:700;color:'+(isToday?'var(--n)':'var(--mu)')+'">'+days[i]+'</div>'
+      +'<div style="font-size:10px;color:'+(isToday?'var(--n)':'var(--mu)')+'">'+fmt(dayDate)+'</div></div>'
+      +'<div style="padding:6px">'
+      +dayEvs.map(function(e){
+        var c=_st.conseillers.find(function(x){return x.id===e.cons_id;})||{name:'?'};
+        var isLate=new Date(e.eval_date)<now&&e.planned_status!=='realise';
+        var statusColor=e.planned_status==='realise'?'var(--tb)':isLate?'var(--crit)':'var(--bon)';
+        var statusLabel=e.planned_status==='realise'?'Realise':isLate?'En retard':'A faire';
+        var prioColor=e.planned_priority==='haute'?'var(--crit)':e.planned_priority==='moyenne'?'var(--moy)':'var(--mu)';
+        return'<div style="background:var(--n);border-radius:var(--r);padding:6px 8px;margin-bottom:4px;border-left:3px solid '+statusColor+'">'
+          +'<div style="font-size:11px;font-weight:600;color:#fff">'+c.name+'</div>'
+          +'<div style="font-size:10px;color:var(--mu)">'+DB.rdv()[e.rdv].label+'</div>'
+          +'<div class="flex ac gap1 mt1">'
+          +(e.eval_type?'<span style="background:var(--bon-bg);color:var(--bon);border-radius:3px;padding:1px 5px;font-size:9px">'+e.eval_type+'</span>':'')
+          +'<span style="background:'+statusColor+'20;color:'+statusColor+';border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700">'+statusLabel+'</span>'
+          +(e.planned_priority?'<span style="font-size:9px;color:'+prioColor+'">'+e.planned_priority+'</span>':'')
+          +'</div>'
+          +'<div class="flex gap1 mt1">'
+          +(e.planned_status!=='realise'?'<button style="font-size:9px;padding:2px 6px;background:var(--tb);color:#fff;border:none;border-radius:3px;cursor:pointer" onclick="completePlannedEval(\''+e.id+'\')">Evaluer</button>':'')
+          +'<button style="font-size:9px;padding:2px 6px;background:var(--crit-bg);color:var(--crit);border:none;border-radius:3px;cursor:pointer" onclick="deletePlannedEval(\''+e.id+'\')">X</button>'
+          +'</div></div>';
+      }).join('')
+      +'</div></div>';
+  }
+  h+='</div>';
+
+  // Overdue list
+  var overdueEvs=_st.evals.filter(function(e){
+    if(!e.planned||e.planned_status==='realise')return false;
+    if(!myC.includes(e.cons_id)&&!isAdmin())return false;
+    return new Date(e.eval_date)<weekStart;
+  });
+  if(overdueEvs.length){
+    h+='<div class="card mt3"><div class="card-title" style="color:var(--crit)">Evaluations en retard</div>'
+      +overdueEvs.map(function(e){
+        var c=_st.conseillers.find(function(x){return x.id===e.cons_id;})||{name:'?'};
+        return'<div class="flex ac gap2" style="padding:8px 0;border-bottom:1px solid var(--bd)">'
+          +'<div class="ava" style="width:28px;height:28px;font-size:10px;background:var(--crit)">'+ini(c.name)+'</div>'
+          +'<div class="f1"><div class="fs12 bold">'+c.name+'</div><div class="fs11 mu">'+DB.rdv()[e.rdv].label+(e.eval_type?' ['+e.eval_type+']':'')+'</div></div>'
+          +'<span class="fs11 mu">Prevu le '+fd(e.eval_date)+'</span>'
+          +'<button class="btn btn-g btn-sm" style="padding:4px 9px;font-size:10px" onclick="completePlannedEval(\''+e.id+'\')">Evaluer</button>'
+          +'<button class="btn btn-r btn-sm" style="padding:4px 9px;font-size:10px" onclick="deletePlannedEval(\''+e.id+'\')">X</button>'
+          +'</div>';
+      }).join('')+'</div>';
+  }
+  el.innerHTML=h;
+}
+
+function openPlanModal(){
+  var myCons=myConseillers();
+  var mgrs=isAdmin()?Object.keys(USERS):[_curMgr()];
+  document.getElementById('plan-cons').innerHTML=myCons.map(function(c){return'<option value="'+c.id+'">'+c.name+'</option>';}).join('');
+  document.getElementById('plan-mgr').innerHTML=mgrs.map(function(n){return'<option value="'+n+'"'+(n===_curMgr()?' selected':'')+'>'+n+'</option>';}).join('');
+  document.getElementById('plan-date').value=new Date().toISOString().split('T')[0];
+  document.getElementById('mod-plan').classList.remove('hidden');
+}
+
+// ══ MODULE ANALYSE IA ══
+var ANTHROPIC_KEY='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';
+
+function initAnalyse(){
+  var myCons=myConseillers();
+  var sel=document.getElementById('an-cons');
+  if(sel)sel.innerHTML=myCons.map(function(c){return'<option value="'+c.id+'">'+c.name+'</option>';}).join('');
+  var dateEl=document.getElementById('an-date');
+  if(dateEl)dateEl.value=new Date().toISOString().split('T')[0];
+}
+async function analyzeTranscript(){
+  var consId=document.getElementById('an-cons').value;
+  var rdv=document.getElementById('an-rdv').value;
+  var text=document.getElementById('an-text').value.trim();
+  if(!consId||!text){alert('Selectionnez un conseiller et collez la retranscription.');return;}
+  var cons=_st.conseillers.find(function(x){return x.id===consId;});
+  if(!cons)return;
+  var blocs=getBlocs()[rdv];
+  if(!blocs)return;
+
+  document.getElementById('an-result').innerHTML='<div class="loading"><div class="spinner"></div>Analyse en cours par Claude...</div>';
+  document.getElementById('an-result').style.display='block';
+  document.getElementById('an-submit').disabled=true;
+
+  var blocsList='';
+  ['tech','com','pro'].forEach(function(dim){
+    var dlbl={'tech':'Technique','com':'Commercial','pro':'Professionnalisme'}[dim];
+    blocsList+='\n'+dlbl+':\n'+blocs[dim].map(function(b,i){return'  '+(i+1)+'. '+b;}).join('\n');
+  });
+
+  var prompt='Tu es un expert en formation commerciale pour un cabinet de gestion de patrimoine (Stellar Invest).\n\n'
+    +'Analyse cette retranscription d\'un rendez-vous de type "'+blocs.label+'" realise par '+cons.name+'.\n\n'
+    +'BLOCS D\'EVALUATION ATTENDUS POUR CE TYPE DE RDV:\n'+blocsList+'\n\n'
+    +'RETRANSCRIPTION DU RENDEZ-VOUS:\n'+text+'\n\n'
+    +'Reponds UNIQUEMENT en JSON valide avec cette structure exacte:\n'
+    +'{\n'
+    +'"synthese": "synthese globale en 3-4 phrases",\n'
+    +'"points_forts": ["point 1", "point 2", "point 3"],\n'
+    +'"points_faibles": ["point 1", "point 2", "point 3"],\n'
+    +'"oublis": ["element oublie 1", "element oublie 2"],\n'
+    +'"score_tech": 72,\n'
+    +'"score_com": 68,\n'
+    +'"score_pro": 75,\n'
+    +'"qualite_commerciale": "evaluation en 2-3 phrases",\n'
+    +'"qualite_technique": "evaluation en 2-3 phrases",\n'
+    +'"professionnalisme": "evaluation en 2-3 phrases",\n'
+    +'"objections_detectees": ["objection 1", "objection 2"],\n'
+    +'"qualite_reponses_objections": "evaluation en 2-3 phrases",\n'
+    +'"recommandations": ["recommandation 1", "recommandation 2", "recommandation 3"],\n'
+    +'"appreciation_globale": "appreciation en 1 phrase"\n'
+    +'}';
+
+  try{
+    var resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]})
+    });
+    var data=await resp.json();
+    if(data.error){throw new Error(data.error.message);}
+    var raw=data.content[0].text.trim();
+    // Extract JSON
+    var jsonMatch=raw.match(/\{[\s\S]*\}/);
+    if(!jsonMatch)throw new Error('Reponse invalide');
+    var analysis=JSON.parse(jsonMatch[0]);
+    displayAnalysis(analysis,consId,rdv,cons.name,blocs.label);
+  }catch(e){
+    document.getElementById('an-result').innerHTML='<div class="al al-crit">Erreur analyse: '+e.message+'</div>';
+    document.getElementById('an-submit').disabled=false;
+  }
+}
+
+var _currentAnalysis=null;
+
+function displayAnalysis(a,consId,rdv,consName,rdvLabel){
+  _currentAnalysis={analysis:a,consId:consId,rdv:rdv};
+  var g=Math.round(a.score_tech*0.35+a.score_com*0.40+a.score_pro*0.25);
+  var l=lv(g);
+  var h='<div style="border:2px solid var(--g);border-radius:var(--rl);padding:20px;margin-top:16px">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--bd)">';
+  h+='<div><div style="font-size:16px;font-weight:700;color:var(--n)">Analyse IA — '+consName+'</div>';
+  h+='<div class="fs12 mu">'+rdvLabel+' — par Claude AI</div></div>';
+  h+='<div style="text-align:center"><strong style="font-size:36px;color:'+l.c+'">'+g+'</strong><div class="fs11 mu">/100</div><span class="badge '+l.cls+'">'+l.lbl+'</span></div></div>';
+  // Scores
+  h+='<div class="g3 mb2" style="gap:10px">';
+  h+='<div style="text-align:center;padding:12px;background:'+sc(a.score_tech)+'18;border-radius:var(--r)"><div class="fs11 mu">Technique</div>';
+  h+='<input type="number" id="adj-tech" value="'+a.score_tech+'" min="0" max="100" style="font-size:22px;font-weight:700;color:'+sc(a.score_tech)+';width:70px;border:none;background:transparent;text-align:center" oninput="updateAdjScore()"></div>';
+  h+='<div style="text-align:center;padding:12px;background:'+sc(a.score_com)+'18;border-radius:var(--r)"><div class="fs11 mu">Commercial</div>';
+  h+='<input type="number" id="adj-com" value="'+a.score_com+'" min="0" max="100" style="font-size:22px;font-weight:700;color:'+sc(a.score_com)+';width:70px;border:none;background:transparent;text-align:center" oninput="updateAdjScore()"></div>';
+  h+='<div style="text-align:center;padding:12px;background:'+sc(a.score_pro)+'18;border-radius:var(--r)"><div class="fs11 mu">Professionnalisme</div>';
+  h+='<input type="number" id="adj-pro" value="'+a.score_pro+'" min="0" max="100" style="font-size:22px;font-weight:700;color:'+sc(a.score_pro)+';width:70px;border:none;background:transparent;text-align:center" oninput="updateAdjScore()"></div>';
+  h+='</div>';
+  h+='<div id="adj-global-badge" style="text-align:center;margin-bottom:16px"><span class="badge '+l.cls+'" style="font-size:13px;padding:4px 16px" id="adj-global-lbl">Score ajuste : '+g+'</span></div>';
+  // Synthese
+  h+='<div class="sep">Synthese globale</div><div class="fs12" style="background:var(--gp);padding:12px;border-radius:var(--r);margin-bottom:12px">'+a.synthese+'</div>';
+  h+='<div class="sep">Appreciation</div><div class="fs12 mu" style="padding:8px 0">'+a.appreciation_globale+'</div>';
+  // Points forts / faibles
+  h+='<div class="g2 mb2" style="gap:12px">';
+  h+='<div><div class="sep">Points forts</div>'+a.points_forts.map(function(p){return'<div class="al al-ok" style="margin-bottom:4px">+ '+p+'</div>';}).join('')+'</div>';
+  h+='<div><div class="sep">Points faibles</div>'+a.points_faibles.map(function(p){return'<div class="al al-warn" style="margin-bottom:4px">- '+p+'</div>';}).join('')+'</div>';
+  h+='</div>';
+  // Oublis
+  if(a.oublis&&a.oublis.length){
+    h+='<div class="sep">Elements oublies ou imprecis</div>';
+    h+=a.oublis.map(function(o){return'<div class="al al-crit" style="margin-bottom:4px">! '+o+'</div>';}).join('');
+  }
+  // Qualites
+  h+='<div class="g3 mb2" style="gap:10px;margin-top:12px">';
+  h+='<div class="card"><div class="card-title">Commercial</div><div class="fs12">'+a.qualite_commerciale+'</div></div>';
+  h+='<div class="card"><div class="card-title">Technique</div><div class="fs12">'+a.qualite_technique+'</div></div>';
+  h+='<div class="card"><div class="card-title">Professionnalisme</div><div class="fs12">'+a.professionnalisme+'</div></div>';
+  h+='</div>';
+  // Objections
+  if(a.objections_detectees&&a.objections_detectees.length){
+    h+='<div class="sep">Objections detectees</div>';
+    h+=a.objections_detectees.map(function(o){return'<span style="display:inline-block;background:var(--nm);color:#fff;border-radius:20px;padding:3px 10px;font-size:11px;margin:2px">'+o+'</span>';}).join(' ');
+    h+='<div class="fs12 mu" style="margin-top:8px">'+a.qualite_reponses_objections+'</div>';
+  }
+  // Recommandations
+  h+='<div class="sep">Recommandations</div>';
+  h+=a.recommandations.map(function(r,i){return'<div class="drill-card"><div class="drill-title">Recommandation '+(i+1)+'</div><div class="drill-body">'+r+'</div></div>';}).join('');
+  // Actions
+  h+='<div class="flex gap2 mt3">';
+  h+='<button class="btn btn-g f1" style="justify-content:center" onclick="saveAnalysis()">Enregistrer dans la fiche conseiller</button>';
+  h+='<button class="btn btn-o" onclick="document.getElementById(\'an-result\').style.display=\'none\';document.getElementById(\'an-submit\').disabled=false;">Annuler</button>';
+  h+='</div></div>';
+  document.getElementById('an-result').innerHTML=h;
+  document.getElementById('an-submit').disabled=false;
+}
+
+function updateAdjScore(){
+  var t=parseInt(document.getElementById('adj-tech').value)||0;
+  var c=parseInt(document.getElementById('adj-com').value)||0;
+  var p=parseInt(document.getElementById('adj-pro').value)||0;
+  var g=Math.round(t*0.35+c*0.40+p*0.25);
+  var l=lv(g);
+  var badge=document.getElementById('adj-global-lbl');
+  if(badge){badge.textContent='Score ajuste : '+g;badge.className='badge '+l.cls;}
+}
+
+async function saveAnalysis(){
+  if(!_currentAnalysis)return;
+  var t=parseInt(document.getElementById('adj-tech').value)||_currentAnalysis.analysis.score_tech;
+  var c=parseInt(document.getElementById('adj-com').value)||_currentAnalysis.analysis.score_com;
+  var p=parseInt(document.getElementById('adj-pro').value)||_currentAnalysis.analysis.score_pro;
+  var g=Math.round(t*0.35+c*0.40+p*0.25);
+  var today=new Date().toISOString().split('T')[0];
+  var payload={
+    cons_id:_currentAnalysis.consId,
+    rdv:_currentAnalysis.rdv,
+    eval_type:'Analyse RDV',
+    source:'ia',
+    manager:_curMgr()||'Manager',
+    eval_date:today,
+    score_tech:t,score_com:c,score_pro:p,score_global:g,
+    blocs_tech:[],blocs_com:[],blocs_pro:[],objs:[],
+    synthese:_currentAnalysis.analysis.synthese,
+    ai_report:_currentAnalysis.analysis
+  };
+  var res=await _sb.from('evaluations').insert(payload);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();
+  toast('Analyse enregistree dans la fiche conseiller',true);
+  // Reset form
+  document.getElementById('an-text').value='';
+  document.getElementById('an-result').style.display='none';
+  _currentAnalysis=null;
+  go('equipe');
+}
+
+// ══ MODULE PLANNING ══
+async function savePlanningItem(){
+  var consId=document.getElementById('pl-cons').value;
+  var rdv=document.getElementById('pl-rdv').value;
+  var evalType=document.getElementById('pl-type').value;
+  var date=document.getElementById('pl-date').value;
+  var notes=document.getElementById('pl-notes').value.trim();
+  var priority=document.getElementById('pl-priority').value;
+  if(!consId||!date){alert('Conseiller et date obligatoires.');return;}
+  var payload={cons_id:consId,rdv:rdv,eval_type:evalType,planned_date:date,manager:_curMgr()||'Manager',notes:notes,priority:priority,status:'a_faire'};
+  var res=await _sb.from('planning').insert(payload);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();closeModal('mod-planning');renderWeekPlanning();
+  toast('Evaluation planifiee',true);
+}
+
+async function updatePlanningStatus(id,status){
+  await _sb.from('planning').update({status:status}).eq('id',id);
+  await sbLoad();renderWeekPlanning();
+}
+
+async function deletePlanningItem(id){
+  if(!confirm('Supprimer cette planification ?'))return;
+  await _sb.from('planning').delete().eq('id',id);
+  await sbLoad();renderWeekPlanning();
+}
+
+var _weekOffset=0;
+function getWeekDates(offset){
+  var now=new Date();
+  var day=now.getDay();
+  var diff=now.getDate()-day+(day===0?-6:1)+offset*7;
+  var monday=new Date(now.setDate(diff));
+  var days=[];
+  for(var i=0;i<7;i++){
+    var d=new Date(monday);d.setDate(monday.getDate()+i);
+    days.push(d);
+  }
+  return days;
+}
+
+function renderWeekPlanning(){
+  var el=document.getElementById('p-planning');if(!el)return;
+  var days=getWeekDates(_weekOffset);
+  var dayNames=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  var myItems=isAdmin()?_st.planning:_st.planning.filter(function(p){return p.manager===_curMgr();});
+  var today=new Date().toISOString().split('T')[0];
+  // Count late
+  var late=myItems.filter(function(p){return p.status==='a_faire'&&p.planned_date<today;}).length;
+  var h='<div class="flex jb ac mb3">';
+  h+='<div><div style="font-size:20px;font-weight:700;color:var(--n)">Planning de la semaine</div>';
+  h+='<div class="fs12 mu mt1">'+days[0].toLocaleDateString('fr-FR')+' — '+days[6].toLocaleDateString('fr-FR')+'</div></div>';
+  h+='<div class="flex gap2 ac">';
+  if(late>0)h+='<span style="background:var(--crit);color:#fff;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:700">'+late+' en retard</span>';
+  h+='<button class="btn btn-o btn-sm" onclick="_weekOffset--;renderWeekPlanning()">← Prev</button>';
+  h+='<button class="btn btn-o btn-sm" onclick="_weekOffset=0;renderWeekPlanning()">Aujourd\'hui</button>';
+  h+='<button class="btn btn-o btn-sm" onclick="_weekOffset++;renderWeekPlanning()">Suiv →</button>';
+  h+='<button class="btn btn-g btn-sm" onclick="openPlanningModal()">+ Planifier</button></div></div>';
+  // Week grid
+  h+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px">';
+  days.forEach(function(d,i){
+    var ds=d.toISOString().split('T')[0];
+    var isToday=ds===today;
+    var dayItems=myItems.filter(function(p){return p.planned_date===ds;});
+    h+='<div style="border:1px solid '+(isToday?'var(--g)':'var(--bd)')+';border-radius:var(--r);padding:8px;background:'+(isToday?'var(--gp)':'var(--w)')+';min-height:120px">';
+    h+='<div style="font-size:11px;font-weight:700;color:'+(isToday?'var(--g)':'var(--mu)')+';margin-bottom:6px">'+dayNames[i]+' '+d.getDate()+'</div>';
+    dayItems.forEach(function(item){
+      var cons=_st.conseillers.find(function(c){return c.id===item.cons_id;});
+      var isLate=item.status==='a_faire'&&ds<today;
+      var statusColor=item.status==='realise'?'var(--tb)':isLate?'var(--crit)':'var(--moy)';
+      var statusLabel=item.status==='realise'?'Fait':isLate?'Retard':'A faire';
+      h+='<div style="background:'+statusColor+'15;border:1px solid '+statusColor+'40;border-radius:5px;padding:5px;margin-bottom:4px;font-size:10px">';
+      h+='<div style="font-weight:700;color:var(--n)">'+(cons?cons.name:'?')+'</div>';
+      h+='<div style="color:var(--mu)">'+item.eval_type+' — '+DB.rdv()[item.rdv].label+'</div>';
+      h+='<div style="display:flex;align-items:center;gap:4px;margin-top:3px">';
+      h+='<span style="background:'+statusColor+';color:#fff;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700">'+statusLabel+'</span>';
+      if(item.priority==='haute')h+='<span style="color:var(--crit);font-weight:700">!</span>';
+      h+='</div>';
+      if(item.notes)h+='<div style="color:var(--mu);margin-top:2px;font-size:9px">'+item.notes+'</div>';
+      h+='<div style="display:flex;gap:3px;margin-top:4px">';
+      if(item.status!=='realise')h+='<button style="font-size:9px;padding:2px 5px;background:var(--tb);color:#fff;border:none;border-radius:3px;cursor:pointer" onclick="updatePlanningStatus(\''+item.id+'\',\'realise\')">Fait</button>';
+      h+='<button style="font-size:9px;padding:2px 5px;background:var(--crit-bg);color:var(--crit);border:1px solid var(--crit);border-radius:3px;cursor:pointer" onclick="deletePlanningItem(\''+item.id+'\')">X</button>';
+      h+='</div></div>';
+    });
+    h+='</div>';
+  });
+  h+='</div>';
+  el.innerHTML=h;
+}
+
+function openPlanningModal(){
+  var myCons=myConseillers();
+  var consSelect='<select id="pl-cons" style="width:100%">'+myCons.map(function(c){return'<option value="'+c.id+'">'+c.name+'</option>';}).join('')+'</select>';
+  var h='<div class="modal-title">Planifier une evaluation</div>';
+  h+='<div style="margin-bottom:12px"><label class="lbl">Conseiller</label>'+consSelect+'</div>';
+  h+='<div class="g2 gap2 mb2">';
+  h+='<div><label class="lbl">Type de RDV</label><select id="pl-rdv" style="width:100%"><option value="phoning">Phoning</option><option value="d0">D0 Etude</option><option value="d1scpi">D1 SCPI</option><option value="d1asset">D1 Asset</option><option value="d1pe">D1 PE</option><option value="d2">D2 Closing</option></select></div>';
+  h+='<div><label class="lbl">Type evaluation</label><select id="pl-type" style="width:100%"><option value="Drill">Drill</option><option value="Ecoute">Ecoute</option><option value="Oral">Oral de formation</option><option value="Analyse RDV">Analyse RDV</option></select></div>';
+  h+='</div>';
+  h+='<div class="g2 gap2 mb2">';
+  h+='<div><label class="lbl">Date prevue</label><input type="date" id="pl-date" style="width:100%"></div>';
+  h+='<div><label class="lbl">Priorite</label><select id="pl-priority" style="width:100%"><option value="normale">Normale</option><option value="haute">Haute</option></select></div>';
+  h+='</div>';
+  h+='<div style="margin-bottom:16px"><label class="lbl">Notes</label><input type="text" id="pl-notes" placeholder="Instructions, contexte..." style="width:100%"></div>';
+  h+='<div class="flex gap2"><button class="btn btn-g f1" style="justify-content:center" onclick="savePlanningItem()">Planifier</button><button class="btn btn-o" onclick="closeModal(\'mod-planning\')">Annuler</button></div>';
+  document.getElementById('mod-planning-body').innerHTML=h;
+  // Set default date to tomorrow
+  var tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);
+  document.getElementById('pl-date').value=tomorrow.toISOString().split('T')[0];
+  document.getElementById('mod-planning').classList.remove('hidden');
+}
+
+</script>
+
+<!-- MODAL SUIVI MANAGERIAL -->
+<div id="mod-suivi" class="modal-bg hidden">
+  <div class="modal" style="width:600px;max-height:88vh;overflow-y:auto">
+    <div id="mod-suivi-body"></div>
+  </div>
+</div>
+
+</body>
+</html>
+
+
+
+<!-- MODAL PLANNING -->
+<div id="mod-planning" class="modal-bg hidden">
+  <div class="modal" style="width:520px">
+    <div id="mod-planning-body"></div>
+  </div>
+</div>
+
+</body>
+</html>
+
+</body>
+</html>
+
+
+
+<!-- MODAL PLANNING -->
+<div id="mod-planning" class="modal-bg hidden">
+  <div class="modal" style="width:520px">
+    <div id="mod-planning-body"></div>
+  </div>
+</div>
+
+
+<script>
+
+
+
+var _sb=supabase.createClient('https://bkrzqitbzedmuwvuqxth.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrcnpxaXRiemVkbXV3dnVxeHRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzQ5MDYsImV4cCI6MjA5NDk1MDkwNn0.uTimyUG9_q-MiErZ3wjYOU0Xl4Vzj1ZkVg4i5X6_qBY');
+var _st={conseillers:[],evals:[],managers:[],planning:[],rh:[],suivi:[],suggestions:[]};
+var _sbBlocs=null,_sbWeights=null,_sbObjs=null;
+var ADMIN='Benjamin Rizzi';
+var USERS={
+  'Benjamin Rizzi':{pwd:'BR@Stellar2025!',role:'admin'},
+  'Hermes Coutureau':{pwd:'Mgr1#Invest!',role:'manager'},
+  'Enzo Gebel':{pwd:'Mgr2#Invest!',role:'manager'},
+  'Mathias Sarfati':{pwd:'Mgr3#Invest!',role:'manager'},
+  'Louis Boob':{pwd:'Mgr4#Invest!',role:'manager'},
+  'Terence Goncalves':{pwd:'Mgr5#Invest!',role:'manager'}
+};
+
+// NOTE: Run this SQL in Supabase:
+// CREATE TABLE IF NOT EXISTS planning (
+//   id uuid default gen_random_uuid() primary key,
+//   cons_id uuid references conseillers(id) on delete cascade,
+//   manager text,
+//   rdv text,
+//   eval_type text default 'Drill',
+//   planned_date date not null,
+//   status text default 'a_faire',
+//   priority text default 'normale',
+//   notes text,
+//   created_at timestamptz default now()
+// );
+// ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS source text DEFAULT 'manuel';
+// ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS ai_report jsonb;
+// Config stored in localStorage
+function _lcGet(k,def){try{var v=localStorage.getItem(k);return v?JSON.parse(v):def;}catch(e){return def;}}
+function _lcSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+
+function _curMgr(){return _lcGet('sia_mgr2',null);}
+function _setCurMgr(n){_lcSet('sia_mgr2',n);}
+function isAdmin(){return _curMgr()===ADMIN;}
+function getUserPwd(n){var u=USERS[n];return u?u.pwd:null;}
+function myConseillers(){
+  if(isAdmin())return _st.conseillers;
+  // Try from Supabase managers table first
+  var m=_st.managers.find(function(x){return x.name===_curMgr();});
+  if(m&&m.team&&m.team.length>0){
+    return _st.conseillers.filter(function(c){return m.team.indexOf(c.id)>=0;});
+  }
+  // Fallback: show all if no assignment yet
+  return _st.conseillers;
+}
+function myPlanning(){
+  if(isAdmin())return _st.planning||[];
+  return (_st.planning||[]).filter(function(p){return p.manager===_curMgr();});
+}
+function myEvals(){
+  if(isAdmin())return _st.evals;
+  var ids=myConseillers().map(function(c){return c.id;});
+  return _st.evals.filter(function(e){return ids.indexOf(e.cons_id)>=0;});
+}
+
+// Weights/blocs/objections in localStorage (admin-configurable)
+function getWeights(){return _sbWeights||_lcGet('sia_w',{phoning:{tech:20,com:55,pro:25},d0:{tech:30,com:40,pro:30},d1scpi:{tech:45,com:35,pro:20},d1asset:{tech:40,com:35,pro:25},d1pe:{tech:40,com:40,pro:20},d2:{tech:20,com:60,pro:20}});}
+function getBlocs(){return _sbBlocs||_lcGet('sia_b',defBlocs());}
+function getObjs(){return _sbObjs||_lcGet('sia_o',defObjs());}
+async function saveWeights(w){
+  _sbWeights=w;_lcSet('sia_w',w);
+  await _sb.from('config').upsert({key:'weights',value:w,updated_by:_curMgr(),updated_at:new Date().toISOString()},{onConflict:'key'});
+  toast('Ponderations sauvegardees',true);
+}
+async function saveBlocs(b){
+  _sbBlocs=b;_lcSet('sia_b',b);
+  await _sb.from('config').upsert({key:'blocs',value:b,updated_by:_curMgr(),updated_at:new Date().toISOString()},{onConflict:'key'});
+  toast('Blocs sauvegardes dans Supabase',true);
+}
+async function saveObjs(o){
+  _sbObjs=o;_lcSet('sia_o',o);
+  await _sb.from('config').upsert({key:'objections',value:o,updated_by:_curMgr(),updated_at:new Date().toISOString()},{onConflict:'key'});
+  toast('Objections sauvegardees',true);
+}
+
+// DB compatibility layer
+var DB={
+  get:function(){return{currentManager:_curMgr(),managers:_st.managers,conseillers:_st.conseillers,evals:_st.evals,weights:getWeights(),rdvBlocs:getBlocs(),objections:getObjs()};},
+  save:function(){},
+  rdv:function(){return getBlocs();}
+};
+
+// Supabase
+async function sbLoad(){
+  try{
+    var r=await Promise.all([
+      _sb.from('conseillers').select('*').order('name'),
+      _sb.from('evaluations').select('*').order('eval_date',{ascending:false}),
+      _sb.from('managers').select('*').order('name'),
+      _sb.from('planning').select('*').order('planned_date')
+    ]);
+    if(r[0].error)throw r[0].error;
+    _st.conseillers=r[0].data||[];
+    _st.evals=r[1].data||[];
+    _st.managers=r[2].data||[];
+    _st.planning=r[3].data||[];
+    var suiviR=await _sb.from('suivi_managerial').select('*').order('created_at',{ascending:false});
+    if(!suiviR.error)_st.suivi=suiviR.data||[];
+    // Load config from Supabase
+    var cfgR=await _sb.from('config').select('*');
+    if(!cfgR.error&&cfgR.data){
+      cfgR.data.forEach(function(row){
+        if(row.key==='blocs')_sbBlocs=row.value;
+        if(row.key==='weights')_sbWeights=row.value;
+        if(row.key==='objections')_sbObjs=row.value;
+      });
+    }
+    // Load RH entries
+    var rhR=await _sb.from('rh_entries').select('*').order('created_at',{ascending:false});
+    if(!rhR.error)_st.rh=rhR.data||[];
+    // Load objection suggestions
+    var sugR=await _sb.from('objections_suggestions').select('*').order('created_at',{ascending:false});
+    if(!sugR.error)_st.suggestions=sugR.data||[];
+    var dot=document.getElementById('sync-dot');
+    if(dot)dot.style.display='block';
+    return true;
+  }catch(e){console.error('Supabase:',e);return false;}
+}
+function sbRealtime(){
+  _sb.channel('db').on('postgres_changes',{event:'*',schema:'public'},function(){
+    sbLoad().then(function(){renderCurrentPage();});
+  }).subscribe();
+}
+var _curPage='dash';
+function renderCurrentPage(){
+  if(_curPage==='dash')renderDash();
+  else if(_curPage==='equipe')renderEquipe();
+  else if(_curPage==='planning')renderWeekPlanning();
+  else if(_curPage==='fiche'){
+    var cid=document.getElementById('fiche-title').getAttribute('data-cid');
+    if(cid)openFiche(cid);
+  }
+}
+
+// Helpers
+var QVAL={excellent:100,bon:75,moyen:50,faible:25,absent:0};
+var QLBL={excellent:'Excellent',bon:'Bon',moyen:'Moyen',faible:'Faible',absent:'Absent'};
+var QCOL={excellent:'#145F39',bon:'#1A4FA0',moyen:'#926A00',faible:'#A03A10',absent:'#8B1515'};
+function lv(s){if(s>=87)return{cls:'lv-elite',lbl:'Elite',c:'#92650A'};if(s>=75)return{cls:'lv-tb',lbl:'Tres bon',c:'#145F39'};if(s>=62)return{cls:'lv-bon',lbl:'Bon',c:'#1A4FA0'};if(s>=48)return{cls:'lv-moy',lbl:'Moyen',c:'#926A00'};if(s>=30)return{cls:'lv-fai',lbl:'Faible',c:'#A03A10'};return{cls:'lv-crit',lbl:'Critique',c:'#8B1515'};}
+function sc(s){return lv(s).c;}
+function ini(n){var p=(n||'?').trim().split(' ');return(p[0][0]+(p[1]?p[1][0]:'')).toUpperCase();}
+function fd(d){if(!d)return'--';var p=(d+'').split('T')[0].split('-');return p[2]+'/'+p[1]+'/'+(p[0]||'').slice(2);}
+function daysSince(ds){if(!ds)return 9999;return Math.floor((new Date()-new Date(ds))/864e5);}
+function calcAnc(ds){if(!ds)return'';var m=Math.floor((new Date()-new Date(ds))/(864e5*30.5));if(m<1)return'< 1 mois';if(m<12)return m+' mois';var y=Math.floor(m/12);var rm=m%12;return y+'an'+(y>1?'s':'')+(rm?' '+rm+'m':'');}
+function toast(msg,ok){var t=document.getElementById('toast');if(!t)return;t.textContent=msg;t.style.borderColor=ok?'#22C55E':'#C9A84C';t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2500);}
+function lastScore(cid){var evs=_st.evals.filter(function(e){return e.cons_id===cid;}).sort(function(a,b){return(b.eval_date||'').localeCompare(a.eval_date||'');});return evs.length?evs[0].score_global:null;}
+function lastDate(cid){var evs=_st.evals.filter(function(e){return e.cons_id===cid;}).sort(function(a,b){return(b.eval_date||'').localeCompare(a.eval_date||'');});return evs.length?evs[0].eval_date:null;}
+function trendVal(cid){var evs=_st.evals.filter(function(e){return e.cons_id===cid;}).sort(function(a,b){return(b.eval_date||'').localeCompare(a.eval_date||'');});return evs.length>=2?evs[0].score_global-evs[1].score_global:null;}
+function scoreByRdv(cid){var res={};_st.evals.filter(function(e){return e.cons_id===cid;}).forEach(function(e){if(!res[e.rdv])res[e.rdv]={sum:0,n:0};res[e.rdv].sum+=e.score_global;res[e.rdv].n++;});var out={};Object.keys(res).forEach(function(k){out[k]={avg:Math.round(res[k].sum/res[k].n),n:res[k].n};});return out;}
+function evalStatus(c){var freq=c.freq||14;var d=daysSince(lastDate(c.id));if(d===9999)return{cls:'sp-new',lbl:'Non evalue',late:true};if(d<=freq)return{cls:'sp-ok',lbl:'A jour ('+d+'j)',late:false};if(d<=freq*1.5)return{cls:'sp-due',lbl:'Bientot ('+d+'j)',late:false};return{cls:'sp-late',lbl:'En retard -- '+d+'j',late:true};}
+
+// Navigation
+function go(p){
+  if(p==='settings'&&!isAdmin()){toast('Acces reserve a l\'administrateur',false);return;}
+  _curPage=p;
+  document.querySelectorAll('.panel').forEach(function(x){x.classList.remove('on');});
+  document.querySelectorAll('.tnb,.sb-btn').forEach(function(b){b.classList.remove('on');});
+  document.getElementById('p-'+p).classList.add('on');
+  var lb={dash:'Dashboard',equipe:'Equipe',eval:'Evaluation',settings:'Parametres'};
+  document.querySelectorAll('.tnb').forEach(function(b){if(b.textContent.trim()===lb[p])b.classList.add('on');});
+  document.querySelectorAll('.sb-btn').forEach(function(b){if(b.textContent.trim()===lb[p])b.classList.add('on');});
+  if(p==='dash')renderDash();
+  if(p==='equipe')renderEquipe();
+  if(p==='eval')initEval();
+  if(p==='settings')showTab('blocs',document.querySelector('.seg-b'));
+  if(p==='analyse')initAnalyse();
+  if(p==='planning'){_weekOffset=0;renderWeekPlanning();}
+}
+function quickEval(t){go('eval');setTimeout(function(){var s=document.getElementById('ev-rdv');if(s){s.value=t;onRdvChange();}},50);}
+function quickEvalFor(cid){go('eval');setTimeout(function(){var s=document.getElementById('ev-cons');if(s)s.value=cid;},50);}
+function closeModal(id){document.getElementById(id).classList.add('hidden');}
+function show(id){document.getElementById(id).classList.remove('hidden');}
+function hide(id){document.getElementById(id).classList.add('hidden');}
+
+// Manager / Auth
+function openMgrModal(){
+  document.getElementById('mod-mgr').classList.remove('hidden');
+  renderMgrList();
+}
+function renderMgrList(){
+  var names=Object.keys(USERS);
+  document.getElementById('mod-mgr-list').innerHTML=names.map(function(n){
+    var a=n===_curMgr();
+    var isA=n===ADMIN;
+    var bg=a?'var(--gp)':'var(--ow)';
+    var bd=a?'var(--gl)':'transparent';
+    var fw=a?700:400;
+    var role=isA?'Administrateur':'Manager';
+    var dot=isA?'#C9A84C':'#2563EB';
+    var active=a?'<span class="badge lv-elite">Actif</span>':'';
+    return '<div style="display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--r);background:'+bg+';border:1px solid '+bd+';cursor:pointer;margin-bottom:6px" data-mgr="'+n+'" onclick="selectMgrEl(this)">'
+      +'<div class="mgr-dot" style="background:'+dot+'">'+n[0]+'</div>'
+      +'<div style="flex:1"><div style="font-size:13px;font-weight:'+fw+'">'+n+'</div>'
+      +'<div style="font-size:10px;color:var(--mu)">'+role+'</div></div>'
+      +active+'</div>';
+  }).join('');
+}
+function selectMgrEl(el){selectMgr(el.getAttribute('data-mgr'));}
+function selectMgr(n){
+  var user=USERS[n];
+  if(!user){alert('Utilisateur inconnu.');return;}
+  var p=prompt('Mot de passe pour '+n+' :');
+  if(!p||p!==user.pwd){alert('Mot de passe incorrect.');return;}
+  _setCurMgr(n);
+  document.getElementById('mgr-dot').textContent=n[0];
+  document.getElementById('mgr-name').textContent=n;
+  var rb=document.getElementById('role-badge');
+  if(rb){rb.style.display='inline';rb.textContent=user.role==='admin'?'ADMIN':'MANAGER';}
+  closeModal('mod-mgr');
+  renderCurrentPage();
+  toast('Connecte : '+n,true);
+}
+async function addMgrFromModal(){
+  var n=document.getElementById('mod-mgr-inp').value.trim();if(!n)return;
+  var res=await _sb.from('managers').insert({name:n,team:[]});
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();renderMgrList();selectMgr(n);document.getElementById('mod-mgr-inp').value='';
+}
+function initMgr(){
+  var cm=_curMgr();
+  if(cm){
+    document.getElementById('mgr-dot').textContent=cm[0];
+    document.getElementById('mgr-name').textContent=cm;
+    var rb=document.getElementById('role-badge');
+    var u=USERS[cm];
+    if(rb){rb.style.display='inline';rb.textContent=u&&u.role==='admin'?'ADMIN':'MANAGER';}
+  }else{openMgrModal();}
+}
+
+// Dashboard
+function renderDash(){
+  var evals=myEvals();
+  var conseillers=myConseillers();
+  var scores=conseillers.map(function(c){return lastScore(c.id);}).filter(function(s){return s!==null;});
+  var avg=scores.length?Math.round(scores.reduce(function(a,b){return a+b;},0)/scores.length):0;
+  var late=conseillers.filter(function(c){return evalStatus(c).late;}).length;
+  var planLate=myPlanning().filter(function(p){return p.status==='a_faire'&&p.planned_date<new Date().toISOString().split('T')[0];}).length;
+  var ok=conseillers.filter(function(c){var st=evalStatus(c);return !st.late&&st.cls==='sp-ok';}).length;
+  var couv=conseillers.length?Math.round(ok/conseillers.length*100):0;
+  var h='<div class="flex jb ac mb3"><div><div style="font-size:20px;font-weight:700;color:var(--n)">'+(isAdmin()?'Tableau de bord global':'Mon tableau de bord')+'</div><div class="fs12 mu mt1">'+(isAdmin()?'Stellar Invest Academy -- Administration':'Votre espace manager')+'</div></div><button class="btn btn-g" onclick="go(\'eval\')">+ Nouvelle evaluation</button></div>';
+  h+='<div class="g4 mb3">'+[
+    {lbl:'Score moyen',val:avg||'--',sub:scores.length+' evalues'},
+    {lbl:'Couverture',val:couv+'%',sub:'Evaluations a jour'},
+    {lbl:'Planifiees en retard',val:planLate,col:planLate>0,sub:'A realiser'},
+    {lbl:'Evaluations',val:evals.length,sub:'Total'}
+  ].map(function(k){return'<div class="kpi"'+(k.col&&k.val>0?' style="background:#7A1515"':'')+'>'+
+    '<div class="kpi-lbl">'+k.lbl+'</div><div class="kpi-val">'+k.val+'</div><div class="kpi-sub">'+k.sub+'</div></div>';}).join('')+'</div>';
+  var alerts=[];
+  conseillers.forEach(function(c){
+    var st=evalStatus(c);var s=lastScore(c.id);var t=trendVal(c.id);
+    if(st.lbl==='Non evalue')alerts.push({cls:'al-info',txt:'<strong>'+c.name+'</strong> -- Aucune evaluation encore'});
+    else if(st.late&&s!==null&&s<50)alerts.push({cls:'al-crit',txt:'<strong>'+c.name+'</strong> -- Score critique ('+s+') + en retard'});
+    else if(st.late)alerts.push({cls:'al-warn',txt:'<strong>'+c.name+'</strong> -- '+st.lbl});
+    else if(s!==null&&s<50)alerts.push({cls:'al-crit',txt:'<strong>'+c.name+'</strong> -- Score critique ('+s+')'});
+    else if(t!==null&&t<-5)alerts.push({cls:'al-warn',txt:'<strong>'+c.name+'</strong> -- Score en baisse ('+t+' pts)'});
+  });
+  if(!alerts.length)alerts.push({cls:'al-ok',txt:'Aucune alerte -- tout est a jour.'});
+  var sorted=[].concat(conseillers).sort(function(a,b){return daysSince(lastDate(b.id))-daysSince(lastDate(a.id));});
+  var planH=sorted.map(function(c){
+    var st=evalStatus(c);
+    return'<div class="flex ac gap2" style="padding:8px 0;border-bottom:1px solid var(--bd)">'
+      +'<div class="ava" style="width:28px;height:28px;font-size:10px">'+ini(c.name)+'</div>'
+      +'<div class="f1"><div class="fs12 bold">'+c.name+'</div><div class="fs10 mu">Tous les '+c.freq+'j</div></div>'
+      +'<span class="sp '+st.cls+'">'+st.lbl+'</span>'
+      +'<button class="btn btn-g btn-sm" style="padding:4px 9px;font-size:10px" onclick="quickEvalFor(\''+c.id+'\')">Evaluer</button></div>';
+  }).join('')||'<div class="fs12 mu">Aucun conseiller.</div>';
+  var lastEvs=[].concat(evals).sort(function(a,b){return(b.eval_date||'').localeCompare(a.eval_date||'');}).slice(0,7);
+  var evH=lastEvs.map(function(e){
+    var c=_st.conseillers.find(function(x){return x.id===e.cons_id;});if(!c)return'';
+    var l=lv(e.score_global);
+    var tb=e.eval_type?'<span style="background:var(--bon-bg);color:var(--bon);border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;margin-left:4px">'+e.eval_type+'</span>':'';var aiBadge=e.source==='ia'?'<span class="ai-badge" style="margin-left:4px">IA</span>':'';
+    return'<tr onclick="showDrillModal(\''+e.id+'\')">'
+      +'<td><div class="flex ac gap1"><div class="ava" style="width:26px;height:26px;font-size:10px">'+ini(c.name)+'</div>'+c.name+'</div></td>'
+      +'<td class="fs11 mu">'+DB.rdv()[e.rdv].label+tb+aiBadge+'</td>'
+      +'<td class="fs11">'+e.manager+'</td>'
+      +'<td class="fs11 mu">'+fd(e.eval_date)+'</td>'
+      +'<td style="font-weight:700;color:'+sc(e.score_tech)+'">'+e.score_tech+'</td>'
+      +'<td style="font-weight:700;color:'+sc(e.score_com)+'">'+e.score_com+'</td>'
+      +'<td style="font-weight:700;color:'+sc(e.score_pro)+'">'+e.score_pro+'</td>'
+      +'<td><strong style="font-size:15px;color:'+l.c+'">'+e.score_global+'</strong></td>'
+      +'<td><span class="badge '+l.cls+'">'+l.lbl+'</span></td></tr>';
+  }).join('')||'<tr><td colspan="9" style="text-align:center;color:var(--mu);padding:20px">Aucune evaluation.</td></tr>';
+  document.getElementById('p-dash').innerHTML=h
+    +'<div class="g2 mb3">'
+    +'<div class="card"><div class="card-title">Alertes</div>'+alerts.slice(0,5).map(function(a){return'<div class="al '+a.cls+'">'+a.txt+'</div>';}).join('')+'</div>'
+    +'<div class="card"><div class="card-title">Planning</div>'+planH+'</div></div>'
+    +'<div class="card"><div class="card-title">Dernieres evaluations</div>'
+    +'<table class="tbl"><thead><tr><th>Conseiller</th><th>RDV / Type</th><th>Manager</th><th>Date</th><th>Tech.</th><th>Com.</th><th>Pro.</th><th>Score</th><th>Niveau</th></tr></thead>'
+    +'<tbody>'+evH+'</tbody></table></div>';
+}
+
+// Equipe
+function renderEquipe(){
+  var canEdit=isAdmin();
+  var conseillers=myConseillers();
+  var hdrEl=document.querySelector('#p-equipe .flex.jb.ac.mb3');
+  if(hdrEl){
+    hdrEl.innerHTML='<div><div style="font-size:20px;font-weight:700;color:var(--n)">'+(canEdit?'Gestion de l\'equipe':'Mon equipe')+'</div>'
+      +'<div class="fs12 mu mt1">'+(canEdit?'Administration':'Vos conseillers assignes')+'</div></div>'
+      +(canEdit?'<button class="btn btn-g" onclick="openConsModal(-1)">+ Ajouter un conseiller</button>':'');
+  }
+  if(!conseillers.length){
+    document.getElementById('team-cards').innerHTML='<div class="card" style="text-align:center;padding:40px;color:var(--mu)"><div style="font-size:32px;margin-bottom:12px">&#128101;</div><div class="fs12">'+(canEdit?'Aucun conseiller.<br>Cliquez &quot;+ Ajouter&quot;.':'Aucun conseiller assigne.<br>Contactez l\'administrateur.')+'</div></div>';
+    return;
+  }
+  document.getElementById('team-cards').innerHTML=conseillers.map(function(c){
+    var s=lastScore(c.id);var l=s!==null?lv(s):{cls:'',lbl:'--',c:'#ccc'};
+    var byRdv=scoreByRdv(c.id);var t=trendVal(c.id);var st=evalStatus(c);var anc=calcAnc(c.date_entree);
+    var cMgrs=_st.managers.filter(function(m){return m.team&&m.team.indexOf(c.id)>=0;}).map(function(m){return m.name;});
+    return'<div class="card">'
+      +'<div class="flex ac gap2 mb2">'
+      +'<div class="ava ava-lg">'+ini(c.name)+'</div>'
+      +'<div class="f1"><div class="flex jb ac"><strong style="font-size:15px">'+c.name+'</strong>'+(s!==null?'<span class="badge '+l.cls+'">'+l.lbl+'</span>':'<span class="fs11 mu">Non evalue</span>')+'</div>'
+      +(anc?'<div class="fs11 mu mt1">'+anc+' dans le cabinet</div>':'')
+      +(c.objectif?'<div class="fs11 mt1" style="color:var(--g)">&#127919; '+c.objectif+'</div>':'')
+      +(cMgrs.length?'<div class="fs11 mt1 mu">&#128100; '+cMgrs.join(', ')+'</div>':'')
+      +'</div>'
+      +(s!==null?'<div style="text-align:center"><strong style="font-size:24px;color:'+l.c+'">'+s+'</strong><div class="fs10 mu">/100</div>'+(t!==null&&t!==0?'<div style="font-size:10px;color:'+(t>0?'#145F39':'#8B1515')+'">'+( t>0?'+ ':'-')+Math.abs(t)+'</div>':'')+'</div>':'')
+      +'</div>'
+      +'<div class="flex ac gap2 mb2"><span class="sp '+st.cls+'">'+st.lbl+'</span><span class="freq-badge">'+c.freq+'j</span></div>'
+      +(Object.keys(byRdv).length?'<div class="divider"></div><div class="fs10 bold mu mb1">Scores par RDV</div>'
+        +Object.keys(byRdv).map(function(k){var r=byRdv[k];return'<div class="rdv-pill"><span class="fs11">'+DB.rdv()[k].label+'</span><div class="flex ac gap2"><span class="fs10 mu">'+r.n+' eval.</span><strong style="color:'+sc(r.avg)+'">'+r.avg+'</strong><span class="badge '+lv(r.avg).cls+'">'+lv(r.avg).lbl+'</span></div></div>';}).join(''):'')
+      +'<div class="flex gap1 mt2">'
+      +'<button class="btn btn-n btn-sm f1" style="justify-content:center" onclick="openFiche(\''+c.id+'\')">Voir la fiche</button>'
+      +(canEdit?'<button class="btn btn-o btn-sm" onclick="openConsModal(\''+c.id+'\')">Modifier</button><button class="btn btn-r btn-sm" onclick="delCons(\''+c.id+'\')">X</button>':'')
+      +'</div></div>';
+  }).join('');
+}
+function openConsModal(id){
+  if(!isAdmin()){alert('Action reservee a l\'administrateur.');return;}
+  var c=id===-1?null:_st.conseillers.find(function(x){return x.id===id;});
+  document.getElementById('mod-cons-title').textContent=c?'Modifier -- '+c.name:'Nouveau conseiller';
+  document.getElementById('cf-name').value=c?c.name:'';
+  document.getElementById('cf-date').value=c?(c.date_entree?c.date_entree.split('T')[0]:''):'';
+  document.getElementById('cf-obj').value=c?(c.objectif||''):'';
+  var freq=c?(c.freq||14):14;
+  document.getElementById('cf-freq').value=freq;
+  document.getElementById('cf-freq-lbl').textContent=freq+' jours';
+  document.getElementById('mod-cons').dataset.editId=id;
+  document.getElementById('mod-cons').classList.remove('hidden');
+  setTimeout(function(){document.getElementById('cf-name').focus();},100);
+}
+async function saveCons(){
+  if(!isAdmin()){alert('Action reservee a l\'administrateur.');return;}
+  var name=document.getElementById('cf-name').value.trim();if(!name){alert('Le nom est obligatoire.');return;}
+  var obj={name:name,date_entree:document.getElementById('cf-date').value||null,objectif:document.getElementById('cf-obj').value.trim(),freq:parseInt(document.getElementById('cf-freq').value)||14};
+  var eid=document.getElementById('mod-cons').dataset.editId;
+  var res=eid===-1||eid==='-1'?await _sb.from('conseillers').insert(obj):await _sb.from('conseillers').update(obj).eq('id',eid);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  closeModal('mod-cons');await sbLoad();renderEquipe();
+}
+async function delCons(id){
+  if(!isAdmin()){alert('Action reservee a l\'administrateur.');return;}
+  var c=_st.conseillers.find(function(x){return x.id===id;});
+  if(!c||!confirm('Supprimer '+c.name+' ?'))return;
+  var res=await _sb.from('conseillers').delete().eq('id',id);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();renderEquipe();
+}
+
+// Fiche
+var _ficheChart=null;
+function openFiche(cid){
+  go('fiche');
+  var c=_st.conseillers.find(function(x){return x.id===cid;});if(!c)return;
+  document.getElementById('fiche-title').textContent=c.name;
+  var evs=_st.evals.filter(function(e){return e.cons_id===cid;}).sort(function(a,b){return(a.eval_date||'').localeCompare(b.eval_date||'');});
+  var s=evs.length?evs[evs.length-1].score_global:null;var l=s!==null?lv(s):{cls:'',lbl:'--',c:'#ccc'};
+  var byRdv=scoreByRdv(cid);
+  var avgT=evs.length?Math.round(evs.reduce(function(a,e){return a+e.score_tech;},0)/evs.length):0;
+  var avgC=evs.length?Math.round(evs.reduce(function(a,e){return a+e.score_com;},0)/evs.length):0;
+  var avgP=evs.length?Math.round(evs.reduce(function(a,e){return a+e.score_pro;},0)/evs.length):0;
+  var oc={};var oBad={};
+  evs.forEach(function(e){(e.objs||[]).forEach(function(o){var t=o.text||o;oc[t]=(oc[t]||0)+1;if(o.ok===false)oBad[t]=(oBad[t]||0)+1;});});
+  var topObjs=Object.keys(oc).sort(function(a,b){return oc[b]-oc[a];}).slice(0,5);
+  var anc=calcAnc(c.date_entree);var st=evalStatus(c);
+  var h='<div class="g2 gap2 mb3" style="align-items:start">'
+    +'<div><div class="card mb2"><div class="flex ac gap2 mb2"><div class="ava ava-lg">'+ini(c.name)+'</div>'
+    +'<div class="f1"><div class="flex jb ac"><strong style="font-size:17px">'+c.name+'</strong>'+(s!==null?'<span class="badge '+l.cls+'">'+l.lbl+'</span>':'')+'</div>'
+    +(c.date_entree?'<div class="fs11 mu mt1">Entre le '+fd(c.date_entree)+(anc?' -- '+anc:'')+'</div>':'')
+    +(c.objectif?'<div class="fs11 mt1" style="color:var(--g)">&#127919; '+c.objectif+'</div>':'')+'</div>'
+    +(s!==null?'<div style="text-align:center"><strong style="font-size:34px;color:'+l.c+'">'+s+'</strong><div class="fs11 mu">/100</div></div>':'')+'</div>'
+    +'<div class="flex ac gap2 mb2"><span class="sp '+st.cls+'">'+st.lbl+'</span><span class="freq-badge">'+c.freq+'j</span></div>'
+    +'<div class="divider"></div>'
+    +'<div class="bar-row"><div class="bar-hd"><span class="fs11">Technique</span><strong class="fs11">'+avgT+'</strong></div><div class="bar-track"><div class="bar-fill" style="width:'+avgT+'%;background:'+sc(avgT)+'"></div></div></div>'
+    +'<div class="bar-row"><div class="bar-hd"><span class="fs11">Commercial</span><strong class="fs11">'+avgC+'</strong></div><div class="bar-track"><div class="bar-fill" style="width:'+avgC+'%;background:'+sc(avgC)+'"></div></div></div>'
+    +'<div class="bar-row"><div class="bar-hd"><span class="fs11">Professionnalisme</span><strong class="fs11">'+avgP+'</strong></div><div class="bar-track"><div class="bar-fill" style="width:'+avgP+'%;background:'+sc(avgP)+'"></div></div></div>'
+    +'</div>'
+    +(Object.keys(byRdv).length?'<div class="card mb2"><div class="card-title">Scores par RDV</div>'+Object.keys(byRdv).map(function(k){var r=byRdv[k];return'<div class="rdv-pill"><span class="fs12">'+DB.rdv()[k].label+'</span><div class="flex ac gap2"><span class="fs10 mu">'+r.n+' eval.</span><strong style="color:'+sc(r.avg)+'">'+r.avg+'</strong><span class="badge '+lv(r.avg).cls+'">'+lv(r.avg).lbl+'</span></div></div>';}).join('')+'</div>':'')
+    +(topObjs.length?'<div class="card mb2"><div class="card-title">Objections recurrentes</div>'+topObjs.map(function(o){return'<div class="flex ac gap2" style="padding:7px 0;border-bottom:1px solid var(--bd)"><span class="fs12 f1">'+o+'</span><span class="badge lv-crit">x'+oc[o]+'</span>'+(oBad[o]?'<span class="fs10" style="color:var(--crit)">x mal</span>':'')+'</div>';}).join('')+'</div>':'')
+    +'<button class="btn btn-g w100" style="justify-content:center" onclick="quickEvalFor(\''+cid+'\')">+ Nouvelle evaluation</button></div>'
+    +'<div><div class="card mb2"><div class="card-title">Progression</div><div style="position:relative;height:210px"><canvas id="cv-fiche"></canvas></div></div>'
+    +'<div class="card"><div class="card-title">Historique ('+evs.length+')</div>'
+    +(!evs.length?'<div class="fs12 mu" style="padding:8px 0">Aucune evaluation.</div>'
+    :[].concat(evs).reverse().map(function(e){
+        var le=lv(e.score_global);
+        var tb=e.eval_type?'<span style="background:var(--bon-bg);color:var(--bon);border-radius:3px;padding:1px 5px;font-size:9px;margin-left:4px">'+e.eval_type+'</span>':'';
+        return'<div class="drill-hr" onclick="showDrillModal(\''+e.id+'\')">'
+          +'<div class="flex ac gap2"><span class="fs11 mu" style="min-width:52px">'+fd(e.eval_date)+'</span><span class="badge '+le.cls+'">'+le.lbl+'</span><strong style="color:'+le.c+'">'+e.score_global+'</strong><span class="fs11 mu f1">'+DB.rdv()[e.rdv].label+tb+'</span><span class="fs11 mu">'+e.manager+'</span><span class="fs11" style="color:var(--g)">Detail -&gt;</span></div>'
+          +(e.synthese?'<div class="fs11 mu mt1" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+e.synthese+'</div>':'')+'</div>';
+      }).join(''))
+    +'</div></div></div>';
+  document.getElementById('fiche-content').innerHTML=h;
+  setTimeout(function(){
+    var el=document.getElementById('cv-fiche');if(!el||!evs.length)return;
+    if(_ficheChart){_ficheChart.destroy();_ficheChart=null;}
+    _ficheChart=new Chart(el,{type:'line',data:{
+      labels:evs.map(function(e){return fd(e.eval_date);}),
+      datasets:[
+        {label:'Global',data:evs.map(function(e){return e.score_global;}),borderColor:'#C9A84C',backgroundColor:'rgba(201,168,76,.1)',fill:true,tension:.4,borderWidth:2.5,pointRadius:5,pointBackgroundColor:'#C9A84C'},
+        {label:'Tech.',data:evs.map(function(e){return e.score_tech;}),borderColor:'#2563EB',fill:false,tension:.4,borderWidth:1.5,pointRadius:3,borderDash:[4,3]},
+        {label:'Com.',data:evs.map(function(e){return e.score_com;}),borderColor:'#1B7A4A',fill:false,tension:.4,borderWidth:1.5,pointRadius:3,borderDash:[4,3]},
+        {label:'Pro.',data:evs.map(function(e){return e.score_pro;}),borderColor:'#7C3AED',fill:false,tension:.4,borderWidth:1.5,pointRadius:3,borderDash:[4,3]}
+      ]
+    },options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10,padding:10}}},scales:{x:{grid:{display:false},ticks:{font:{size:9}}},y:{min:0,max:100}}}});
+  },80);
+}
+
+// Drill modal
+async function deleteEval(eid){
+  if(!confirm('Supprimer cette evaluation definitivement ?'))return;
+  var res=await _sb.from('evaluations').delete().eq('id',eid);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  closeModal('mod-drill');await sbLoad();renderCurrentPage();toast('Evaluation supprimee',true);
+}
+
+async function openEditEval(eid){
+  var e=_st.evals.find(function(x){return x.id===eid;});if(!e)return;
+  closeModal('mod-drill');
+  // Store eval being edited
+  _editingEvalId=eid;
+  // Pre-fill eval form
+  var rdv=e.rdv;
+  document.getElementById('ev-rdv').value=rdv;
+  var consEl=document.getElementById('ev-cons');
+  if(consEl)consEl.value=e.cons_id;
+  document.getElementById('ev-date').value=e.eval_date||'';
+  var typeEl=document.getElementById('ev-type');
+  if(typeEl)typeEl.value=e.eval_type||'Drill';
+  // Start eval form with pre-filled data
+  startEvalWithData(e);
+  go('eval');
+}
+var _editingEvalId=null;
+
+function startEvalWithData(e){
+  var rdv=e.rdv;var meta=getBlocs()[rdv];
+  evObjs=JSON.parse(JSON.stringify(e.objs||[]));evBlocs={tech:{},com:{},pro:{}};
+  var titleEl=document.getElementById('ev-rdv-title');
+  if(titleEl)titleEl.textContent=meta.label+' (modification)';
+  hide('eval-s1');show('eval-s2');hide('eval-s3');
+  ['tech','com','pro'].forEach(function(dim){
+    var lbl=document.getElementById('ev-'+dim[0]+'-lbl');
+    if(lbl)lbl.textContent={'tech':'Technique','com':'Commercial','pro':'Professionnalisme'}[dim];
+    var blocs=e['blocs_'+dim]||[];
+    var container=document.getElementById('ev-blocs-'+dim);if(!container)return;
+    container.innerHTML=meta[dim].map(function(bloc){
+      var bid=dim+'_'+bloc.replace(/\W/g,'_');
+      var existing=blocs.find(function(b){return b.b===bloc;});
+      var selQ=existing?existing.q:'';
+      if(selQ)evBlocs[dim][bid]={q:selQ,b:bloc};
+      var cmtVal=existing&&existing.c?existing.c.replace(/"/g,'&quot;'):'';
+      var btns=['excellent','bon','moyen','faible','absent'].map(function(q){
+        return '<button class="qb '+q+(selQ===q?' sel':'')+'" data-bid="'+bid+'" data-q="'+q+'" data-dim="'+dim+'" data-bloc="'+bloc.replace(/"/g,'&quot;')+'" onclick="setBtnQ(this)">'+QLBL[q]+'</button>';
+      }).join('');
+      return '<div class="qual-row"><div><div class="qual-name">'+bloc+'</div>'
+        +'<textarea class="qual-cmt" id="cmt-'+bid+'" rows="1" placeholder="Commentaire...">'+cmtVal+'</textarea></div>'
+        +'<div class="qual-btns">'+btns+'</div></div>';
+    }).join('');
+  });
+  renderObjList(rdv);
+  var syn=document.getElementById('ev-synthese');if(syn)syn.value=e.synthese||'';
+  updateScore();
+}
+function showDrillModal(eid){
+  var e=_st.evals.find(function(x){return x.id===eid;});if(!e)return;
+  var c=_st.conseillers.find(function(x){return x.id===e.cons_id;});var l=lv(e.score_global);
+  document.getElementById('drill-title').textContent=(c?c.name:'')
+    +' -- '+DB.rdv()[e.rdv].label
+    +(e.eval_type?' ['+e.eval_type+']':'')
+    +' ('+fd(e.eval_date)+')';
+  var canEdit=isAdmin()||(e.manager===_curMgr());
+  var h='<div class="flex ac gap3 mb2" style="padding-bottom:12px;border-bottom:1px solid var(--bd)">'
+    +'<div style="text-align:center"><strong style="font-size:30px;color:'+l.c+'">'+e.score_global+'</strong><div class="fs10 mu">/100</div></div>'
+    +'<span class="badge '+l.cls+'">'+l.lbl+'</span><span class="fs11 mu">Par '+e.manager+'</span></div>'
+    +'<div class="g3 mb2" style="gap:8px">'
+    +[{lbl:'Technique',k:'score_tech'},{lbl:'Commercial',k:'score_com'},{lbl:'Pro.',k:'score_pro'}].map(function(x){var sv=e[x.k];return'<div style="text-align:center;padding:8px;background:'+sc(sv)+'18;border-radius:var(--r)"><div class="fs10 mu">'+x.lbl+'</div><div style="font-size:20px;font-weight:700;color:'+sc(sv)+'">'+sv+'</div></div>';}).join('')+'</div>';
+  ['blocs_tech','blocs_com','blocs_pro'].forEach(function(key){
+    var lb={'blocs_tech':'Technique','blocs_com':'Commercial','blocs_pro':'Professionnalisme'}[key];
+    var blocs=e[key]||[];if(!blocs.length)return;
+    h+='<div style="font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--g);font-weight:700;margin:12px 0 6px;border-bottom:1px solid var(--gl);padding-bottom:4px">'+lb+'</div>';
+    blocs.forEach(function(b){var qc=QCOL[b.q]||'#ccc';h+='<div class="flex ac gap2" style="padding:5px 0;border-bottom:1px solid #F5F2ED"><div style="width:8px;height:8px;border-radius:50%;background:'+qc+';flex-shrink:0"></div><span class="fs12 f1">'+b.b+'</span><span style="font-size:10px;font-weight:700;color:'+qc+'">'+(QLBL[b.q]||b.q)+'</span></div>'+(b.c?'<div class="fs11 mu" style="padding:2px 0 5px 18px">'+b.c+'</div>':'');});
+  });
+  var objs=e.objs||[];
+  if(objs.length){h+='<div style="font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--g);font-weight:700;margin:12px 0 6px;border-bottom:1px solid var(--gl);padding-bottom:4px">Objections</div>';objs.forEach(function(o){var txt=o.text||o;h+='<div class="flex ac gap2" style="padding:7px 0;border-bottom:1px solid #F5F2ED"><span style="font-size:15px;color:'+(o.ok?'var(--tb)':'var(--crit)')+'">'+(o.ok?'V':'X')+'</span><span class="fs12 f1">'+txt+'</span>'+(o.note?'<span class="fs11 mu">'+o.note+'</span>':'')+'</div>';});}
+  if(e.synthese)h+='<div style="font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--g);font-weight:700;margin:12px 0 6px">Synthese</div><div class="fs12" style="background:var(--gp);padding:10px;border-radius:var(--r)">'+e.synthese+'</div>';
+  if(canEdit){
+    h+='<div class="flex gap2 mt3 pt2" style="border-top:1px solid var(--bd);padding-top:12px">';
+    h+='<button class="btn btn-n btn-sm" onclick="openEditEval(\''+eid+'\')" >Modifier cette evaluation</button>';
+    h+='<button class="btn btn-r btn-sm" onclick="deleteEval(\''+eid+'\')" >Supprimer</button>';
+    h+='</div>';
+  }
+  document.getElementById('drill-body').innerHTML=h;
+  document.getElementById('mod-drill').classList.remove('hidden');
+}
+
+// Evaluation
+var evObjs=[];var evBlocs={tech:{},com:{},pro:{}};
+function initEval(){
+  var myCons=myConseillers();
+  document.getElementById('ev-cons').innerHTML=myCons.length?myCons.map(function(c){return'<option value="'+c.id+'">'+c.name+'</option>';}).join(''):'<option value="">Aucun conseiller assigne</option>';
+  document.getElementById('ev-date').value=new Date().toISOString().split('T')[0];
+  show('eval-s1');hide('eval-s2');hide('eval-s3');
+  evObjs=[];evBlocs={tech:{},com:{},pro:{}};onRdvChange();
+}
+function onRdvChange(){
+  var rdv=document.getElementById('ev-rdv').value;var w=getWeights()[rdv];
+  document.getElementById('ev-weights').innerHTML=[{lbl:'Technique',v:w.tech,c:'#2563EB'},{lbl:'Commercial',v:w.com,c:'#1B7A4A'},{lbl:'Professionnalisme',v:w.pro,c:'#7C3AED'}].map(function(x){return'<div class="flex ac gap1"><div style="width:10px;height:10px;border-radius:50%;background:'+x.c+'"></div><span class="fs12 bold">'+x.lbl+'</span><span style="background:var(--gp);padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;color:var(--n)">'+x.v+'%</span></div>';}).join('');
+}
+function startEval(){
+  if(!document.getElementById('ev-cons').value){alert('Aucun conseiller disponible.');return;}
+  var rdv=document.getElementById('ev-rdv').value;var meta=getBlocs()[rdv];
+  evObjs=[];evBlocs={tech:{},com:{},pro:{}};
+  document.getElementById('ev-rdv-title').textContent=meta.label;
+  hide('eval-s1');show('eval-s2');hide('eval-s3');
+  ['tech','com','pro'].forEach(function(dim){
+    document.getElementById('ev-'+dim[0]+'-lbl').textContent={'tech':'Technique','com':'Commercial','pro':'Professionnalisme'}[dim];
+    document.getElementById('ev-blocs-'+dim).innerHTML=meta[dim].map(function(bloc){
+      var bid=dim+'_'+bloc.replace(/\W/g,'_');
+      return'<div class="qual-row"><div><div class="qual-name">'+bloc+'</div>'
+        +'<textarea class="qual-cmt" id="cmt-'+bid+'" rows="1" placeholder="Commentaire..." oninput="this.style.height=\'auto\';this.style.height=this.scrollHeight+\'px\'"></textarea></div>'
+        +'<div class="qual-btns">'+['excellent','bon','moyen','faible','absent'].map(function(q){return'<button class="qb '+q+'" onclick="setQ(\''+bid+'\',\''+q+'\',\''+dim+'\',\''+bloc.replace(/'/g,"\\'")+'\',this)">'+QLBL[q]+'</button>';}).join('')+'</div></div>';
+    }).join('');
+  });
+  renderObjList(rdv);document.getElementById('ev-synthese').value='';updateScore();
+}
+function setBtnQ(btn){setQ(btn.getAttribute('data-bid'),btn.getAttribute('data-q'),btn.getAttribute('data-dim'),btn.getAttribute('data-bloc'),btn);}
+function setQ(bid,q,dim,bloc,btn){
+  btn.parentElement.querySelectorAll('.qb').forEach(function(b){b.classList.remove('sel');});
+  btn.classList.add('sel');evBlocs[dim][bid]={q:q,b:bloc};updateScore();
+}
+function updateScore(){
+  var rdv=document.getElementById('ev-rdv').value;var w=getWeights()[rdv];
+  function ds(dim){var v=Object.values(evBlocs[dim]).filter(function(e){return e.q;});return v.length?Math.round(v.reduce(function(s,e){return s+QVAL[e.q];},0)/v.length):0;}
+  var t=ds('tech'),c=ds('com'),p=ds('pro');
+  var has=Object.values(evBlocs).some(function(x){return Object.keys(x).length>0;});
+  var g=has?Math.round(t*w.tech/100+c*w.com/100+p*w.pro/100):0;
+  document.getElementById('ev-score-val').textContent=g;
+  var circ=Math.round(g/100*195);
+  document.getElementById('ev-arc').setAttribute('stroke-dasharray',circ+' '+(195-circ));
+  document.getElementById('ev-arc').setAttribute('stroke',sc(g));
+  document.getElementById('ev-score-badge').innerHTML='<span class="badge '+lv(g).cls+'">'+lv(g).lbl+'</span>';
+}
+function renderObjList(rdv){
+  var objs=getObjs()[rdv]||[];
+  document.getElementById('ev-obj-list').innerHTML=objs.map(function(o){
+    var eobj=evObjs.find(function(x){return x.text===o;});
+    var active=!!eobj;var okSel=active&&eobj&&eobj.ok===true;var koSel=active&&eobj&&eobj.ok===false;
+    var noteVal=(active&&eobj&&eobj.note)?eobj.note.replace(/"/g,'&quot;'):'';
+    var esc=o.replace(/"/g,'&quot;');var iid='od_'+o.replace(/[^a-zA-Z0-9]/g,'_');
+    var h='<div class="obj-item'+(active?' active':'')+'" id="'+iid+'">';
+    h+='<div class="obj-hd" style="cursor:pointer" onclick="objToggle(this)">';
+    h+='<input type="checkbox"'+(active?' checked':'')+' style="width:15px;height:15px;accent-color:var(--n);pointer-events:none" data-o="'+esc+'">';
+    h+='<span style="font-size:12px;font-weight:600;color:var(--n);flex:1">'+o+'</span>';
+    if(active&&eobj&&eobj.ok!==null)h+='<span class="obj-ok-badge" style="font-size:14px;color:'+(okSel?'var(--tb)':'var(--crit)')+';">'+(okSel?'V':'X')+'</span>';
+    h+='</div>';
+    h+='<div class="obj-body">';
+    h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="fs11 mu" style="width:90px;flex-shrink:0">Traitement :</span>';
+    h+='<div class="treat-toggle">';
+    h+='<button class="treat-opt ok'+(okSel?' sel':'')+'" data-o="'+esc+'" data-v="1" onclick="objTreat(this)">V Bien traite</button>';
+    h+='<button class="treat-opt ko'+(koSel?' sel':'')+'" data-o="'+esc+'" data-v="0" onclick="objTreat(this)">X Mal traite</button>';
+    h+='</div></div>';
+    h+='<div><label class="lbl" style="margin-bottom:3px">Commentaire manager</label>';
+    h+='<input type="text" maxlength="80" value="'+noteVal+'" placeholder="ex: aucune reponse structuree..." style="font-size:11px;width:100%" data-o="'+esc+'" oninput="objNote(this)">';
+    h+='</div></div></div>';
+    return h;
+  }).join('');
+}
+function objToggle(hd){
+  var o=hd.querySelector('input').getAttribute('data-o');
+  var idx=evObjs.findIndex(function(x){return x.text===o;});
+  if(idx>=0){evObjs.splice(idx,1);}else{evObjs.push({text:o,ok:null,note:''});}
+  renderObjList(document.getElementById('ev-rdv').value);
+}
+function objTreat(btn){
+  var o=btn.getAttribute('data-o');var val=btn.getAttribute('data-v')==='1';
+  var obj=evObjs.find(function(x){return x.text===o;});if(!obj)return;
+  obj.ok=val;
+  var tg=btn.closest('.treat-toggle');tg.querySelectorAll('.treat-opt').forEach(function(b){b.classList.remove('sel');});btn.classList.add('sel');
+  var badge=btn.closest('.obj-item').querySelector('.obj-ok-badge');
+  if(badge){badge.textContent=val?'V':'X';badge.style.color=val?'var(--tb)':'var(--crit)';}
+}
+function objNote(inp){var o=inp.getAttribute('data-o');var obj=evObjs.find(function(x){return x.text===o;});if(obj)obj.note=inp.value;}
+function addObj(){
+  var inp=document.getElementById('ev-obj-input');var val=inp.value.trim();if(!val)return;
+  evObjs.push({text:val,ok:null,note:''});
+  var rdv=document.getElementById('ev-rdv').value;var o=getObjs();
+  if(!o[rdv])o[rdv]=[];if(!o[rdv].includes(val))o[rdv].push(val);
+  saveObjs(o);inp.value='';renderObjList(rdv);
+}
+async function saveEval(){
+  var rdv=document.getElementById('ev-rdv').value;var w=getWeights()[rdv];
+  function ds(dim){var v=Object.values(evBlocs[dim]).filter(function(e){return e.q;});return v.length?Math.round(v.reduce(function(s,e){return s+QVAL[e.q];},0)/v.length):0;}
+  var t=ds('tech'),c=ds('com'),p=ds('pro');var g=Math.round(t*w.tech/100+c*w.com/100+p*w.pro/100);
+  function buildBlocs(dim){return Object.values(evBlocs[dim]).map(function(e){var bid=dim+'_'+e.b.replace(/\W/g,'_');var el=document.getElementById('cmt-'+bid);return{b:e.b,q:e.q,c:el?el.value.trim():''};})}
+  var consId=document.getElementById('ev-cons').value;
+  var evalType=document.getElementById('ev-type')?document.getElementById('ev-type').value:'Drill';
+  var payload={cons_id:consId,rdv:rdv,eval_type:evalType,manager:_curMgr()||'Manager',eval_date:document.getElementById('ev-date').value,blocs_tech:buildBlocs('tech'),blocs_com:buildBlocs('com'),blocs_pro:buildBlocs('pro'),objs:JSON.parse(JSON.stringify(evObjs)),synthese:document.getElementById('ev-synthese').value.trim(),score_tech:t,score_com:c,score_pro:p,score_global:g};
+  var res;
+  if(_editingEvalId){
+    // Log edit for admin
+    var editLog={edited_at:new Date().toISOString(),edited_by:_curMgr(),prev_score:null};
+    var prev=_st.evals.find(function(x){return x.id===_editingEvalId;});
+    if(prev)editLog.prev_score=prev.score_global;
+    var currentLog=prev&&prev.edit_log?prev.edit_log:[];
+    if(!Array.isArray(currentLog))currentLog=[];
+    currentLog.push(editLog);
+    payload.edit_log=currentLog;
+    res=await _sb.from('evaluations').update(payload).eq('id',_editingEvalId);
+    _editingEvalId=null;
+  }else{
+    res=await _sb.from('evaluations').insert(payload);
+  }
+  if(res.error){alert('Erreur Supabase: '+res.error.message);return;}
+  await sbLoad();
+  var l=lv(g);var cons=_st.conseillers.find(function(x){return x.id===consId;});
+  var weak=[];if(t<50)weak.push({lbl:'Technique',a:'Revision des blocs Absent et Faible.'});if(c<50)weak.push({lbl:'Commercial',a:'Drills objections + jeux de role.'});if(p<50)weak.push({lbl:'Professionnalisme',a:'Enregistrement video. Posture, structure.'});
+  var failObjs=evObjs.filter(function(o){return o.ok===false;});
+  document.getElementById('eval-result').innerHTML=
+    '<div style="text-align:center;padding:20px 0;border-bottom:1px solid var(--bd);margin-bottom:16px">'
+    +'<div class="fs10 mu" style="text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px">'+(_editingEvalId?'Evaluation modifiee':'Evaluation enregistree')+' V</div>'
+    +'<strong style="font-size:44px;color:'+l.c+'">'+g+'</strong><div class="fs12 mu">/100</div>'
+    +'<div class="mt1"><span class="badge '+l.cls+'" style="font-size:12px;padding:4px 14px">'+l.lbl+'</span></div>'
+    +(cons?'<div class="fs11 mu mt1">'+cons.name+' -- '+DB.rdv()[rdv].label+' ['+evalType+']</div>':'')+'</div>'
+    +'<div class="g3 mb2" style="gap:10px">'+[{lbl:'Technique',s:t},{lbl:'Commercial',s:c},{lbl:'Professionnalisme',s:p}].map(function(x){return'<div style="text-align:center;padding:10px;background:'+sc(x.s)+'15;border-radius:var(--r)"><div class="fs11 mu">'+x.lbl+'</div><div style="font-size:22px;font-weight:700;color:'+sc(x.s)+'">'+x.s+'</div></div>';}).join('')+'</div>'
+    +(weak.length?'<div class="sep">Plan d\'action</div>'+weak.map(function(w2){return'<div class="drill-card"><div class="drill-title">'+w2.lbl+'</div><div class="drill-body">'+w2.a+'</div></div>';}).join(''):'<div class="al al-ok">Bon niveau -- continuer.</div>')
+    +(failObjs.length?'<div class="sep">Objections a retravailler</div>'+failObjs.map(function(o){return'<div class="al al-warn">X <strong>'+o.text+'</strong>'+(o.note?' -- <em>'+o.note+'</em>':'')+'</div>';}).join(''):'')
+    +'<div class="flex gap2 mt2">'+(cons?'<button class="btn btn-n" onclick="openFiche(\''+consId+'\')">Voir la fiche</button>':'')
+    +'<button class="btn btn-o" onclick="initEval()">Nouvelle evaluation</button>'
+    +'<button class="btn btn-o" onclick="go(\'dash\')">Dashboard</button></div>';
+  hide('eval-s2');show('eval-s3');
+}
+
+// Settings
+function showTab(tab,btn){
+  ['blocs','managers','weights','objs'].forEach(function(t){document.getElementById('stab-'+t).classList.add('hidden');});
+  document.querySelectorAll('.seg-b').forEach(function(b){b.classList.remove('on');});
+  show('stab-'+tab);if(btn)btn.classList.add('on');
+  if(tab==='blocs')renderBlocsEditor();
+  if(tab==='managers')renderMgrSettings();
+  if(tab==='weights')renderWeightsEditor();
+  if(tab==='objs')renderObjSettings();
+}
+function renderBlocsEditor(){
+  if(!isAdmin()){document.getElementById('stab-blocs').innerHTML='<div class="al al-warn">Acces reserve a l\'administrateur.</div>';return;}
+  var rl={phoning:'Phoning',d0:'D0',d1scpi:'D1 SCPI',d1asset:'D1 Asset',d1pe:'D1 PE',d2:'D2'};
+  document.getElementById('stab-blocs').innerHTML=Object.keys(getBlocs()).map(function(rdv){var meta=getBlocs()[rdv];
+    return'<div class="card mb2"><div class="flex jb ac mb2"><strong style="font-size:13px">'+rl[rdv]+'</strong><input type="text" value="'+meta.label+'" style="width:200px;font-size:12px" onchange="updateRdvLabel(\''+rdv+'\',this.value)"></div>'
+      +['tech','com','pro'].map(function(dim){var dl={'tech':'Technique','com':'Commercial','pro':'Professionnalisme'}[dim];
+        return'<div style="font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--g);font-weight:700;margin:12px 0 6px">'+dl+'</div>'
+          +meta[dim].map(function(bloc,i){return'<div class="flex ac gap1 mb1"><span style="color:var(--mu);user-select:none">+</span><input type="text" value="'+bloc+'" style="flex:1;font-size:12px" onchange="updateBloc(\''+rdv+'\',\''+dim+'\','+i+',this.value)"><button class="btn btn-r btn-sm" style="padding:3px 8px" onclick="removeBloc(\''+rdv+'\',\''+dim+'\','+i+')">X</button></div>';}).join('')
+          +'<button class="btn btn-o btn-sm" style="font-size:11px;margin-top:4px" onclick="addBloc(\''+rdv+'\',\''+dim+'\')">+ Ajouter</button>';
+      }).join('')+'</div>';
+  }).join('');
+}
+function updateRdvLabel(rdv,v){var b=getBlocs();b[rdv].label=v;saveBlocs(b);}
+function updateBloc(rdv,dim,i,v){var b=getBlocs();b[rdv][dim][i]=v;saveBlocs(b);}
+async function removeBloc(rdv,dim,i){var b=getBlocs();b[rdv][dim].splice(i,1);await saveBlocs(b);renderBlocsEditor();}
+async function addBloc(rdv,dim){var b=getBlocs();b[rdv][dim].push('Nouveau bloc');await saveBlocs(b);renderBlocsEditor();}
+
+function renderMgrSettings(){
+  if(!isAdmin()){document.getElementById('stab-managers').innerHTML='<div class="al al-warn">Acces reserve a l\'administrateur.</div>';return;}
+  var d=DB.get();
+  var allMgrs=[{name:ADMIN,team:[],isAdmin:true}].concat(d.managers.filter(function(m){return m.name!==ADMIN;}));
+  var h='<div class="g2" style="align-items:start;gap:12px"><div class="card"><div class="card-title">Managers & equipes</div><div class="fs11 mu mb2">Assignez les conseillers a chaque manager.</div>';
+  h+=allMgrs.map(function(m){
+    var isA=m.name===ADMIN;
+    var realMi=d.managers.findIndex(function(x){return x.name===m.name;});
+    return'<div style="padding:12px 0;border-bottom:1px solid var(--bd)">'
+      +'<div class="flex ac gap2 mb2"><div class="mgr-dot" style="background:'+(isA?'var(--g)':'#2563EB')+'">'+m.name[0]+'</div>'
+      +'<strong class="f1">'+m.name+'</strong><span style="font-size:10px;color:var(--mu)">'+(isA?'Admin':'Manager')+'</span>'
+      +(!isA?'<button class="btn btn-r btn-sm" onclick="removeMgr(\''+m.name+'\')">Supprimer</button>':'')+'</div>'
+      +(!isA?'<div class="fs11 mu mb1">Conseillers assignes :</div>'
+      +d.conseillers.map(function(c){var inT=m.team&&m.team.indexOf(c.id)>=0;return'<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin:3px 0"><input type="checkbox"'+(inT?' checked':'')+' style="width:13px;height:13px;margin:0;accent-color:var(--g)" onchange="toggleTeam('+realMi+',\''+c.id+'\',this.checked)">'+c.name+'</label>';}).join(''):'')
+      +'</div>';
+  }).join('');
+  h+='<div class="flex gap1 mt2"><input type="text" id="mgr-new" placeholder="Nom du manager" style="flex:1"><button class="btn btn-g btn-sm" onclick="addMgrSettings()">Ajouter</button></div></div>';
+  h+='<div class="card"><div class="card-title">Niveaux</div>'+[{lbl:'Elite',min:87,max:100,cls:'lv-elite'},{lbl:'Tres bon',min:75,max:86,cls:'lv-tb'},{lbl:'Bon',min:62,max:74,cls:'lv-bon'},{lbl:'Moyen',min:48,max:61,cls:'lv-moy'},{lbl:'Faible',min:30,max:47,cls:'lv-fai'},{lbl:'Critique',min:0,max:29,cls:'lv-crit'}].map(function(l){return'<div class="flex ac gap2 mb1"><span class="badge '+l.cls+'" style="min-width:60px;justify-content:center">'+l.lbl+'</span><div style="flex:1;height:4px;background:var(--bd);border-radius:2px;overflow:hidden"><div style="width:'+l.max+'%;height:100%;background:var(--g);border-radius:2px"></div></div><span class="fs11 mu">'+l.min+'-'+l.max+'</span></div>';}).join('')+'</div></div>';
+  document.getElementById('stab-managers').innerHTML=h;
+}
+function toggleTeam(mi,cid,checked){
+  if(mi<0)return;
+  if(!_st.managers[mi].team)_st.managers[mi].team=[];
+  if(checked){if(_st.managers[mi].team.indexOf(cid)<0)_st.managers[mi].team.push(cid);}
+  else{_st.managers[mi].team=_st.managers[mi].team.filter(function(x){return x!==cid;});}
+  _sb.from('managers').update({team:_st.managers[mi].team}).eq('name',_st.managers[mi].name);
+}
+async function addMgrSettings(){
+  var n=document.getElementById('mgr-new').value.trim();if(!n)return;
+  var res=await _sb.from('managers').insert({name:n,team:[]});
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();document.getElementById('mgr-new').value='';renderMgrSettings();
+}
+async function removeMgr(name){
+  var res=await _sb.from('managers').delete().eq('name',name);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  if(_curMgr()===name){_setCurMgr(null);_locked=false;openMgrModal();}
+  await sbLoad();renderMgrSettings();
+}
+
+function renderWeightsEditor(){
+  if(!isAdmin()){document.getElementById('stab-weights').innerHTML='<div class="al al-warn">Acces reserve a l\'administrateur.</div>';return;}
+  var rl={phoning:'Phoning',d0:'D0',d1scpi:'D1 SCPI',d1asset:'D1 Asset',d1pe:'D1 PE',d2:'D2'};
+  document.getElementById('stab-weights').innerHTML='<div class="g2">'+Object.keys(getWeights()).map(function(rdv){var w=getWeights()[rdv];
+    return'<div class="card"><strong class="fs12">'+rl[rdv]+'</strong>'+[{k:'tech',lbl:'Technique',c:'#2563EB'},{k:'com',lbl:'Commercial',c:'#1B7A4A'},{k:'pro',lbl:'Pro.',c:'#7C3AED'}].map(function(x){return'<div style="display:grid;grid-template-columns:110px 1fr 40px;align-items:center;gap:8px;margin:8px 0"><span class="fs11" style="color:'+x.c+';font-weight:600">'+x.lbl+'</span><input type="range" min="5" max="80" step="5" value="'+w[x.k]+'" oninput="updateW(\''+rdv+'\',\''+x.k+'\',parseInt(this.value));this.nextSibling.textContent=this.value+\'%\'"><span class="fs11 bold" style="text-align:right">'+w[x.k]+'%</span></div>';}).join('')+'</div>';}).join('')+'</div>';
+}
+function updateW(rdv,k,v){var w=getWeights();w[rdv][k]=v;saveWeights(w);}
+
+function renderObjSettings(){
+  if(!isAdmin()){document.getElementById('stab-objs').innerHTML='<div class="al al-warn">Acces reserve a l\'administrateur.</div>';return;}
+  var rl={phoning:'Phoning',d0:'D0',d1scpi:'D1 SCPI',d1asset:'D1 Asset',d1pe:'D1 PE',d2:'D2'};
+  document.getElementById('stab-objs').innerHTML='<div class="g2">'+Object.keys(getObjs()).map(function(rdv){var objs=getObjs()[rdv]||[];
+    return'<div class="card"><div class="card-title">'+rl[rdv]+'</div>'+objs.map(function(o){return'<div class="flex ac gap1 mb1"><span class="f1 fs11" style="padding:4px 8px;background:var(--ow);border-radius:4px">'+o+'</span><button class="btn btn-r btn-sm" style="padding:3px 7px" onclick="removeObjBase(\''+rdv+'\',\''+o.replace(/'/g,'\\\'')+'\')" >X</button></div>';}).join('')
+      +'<div class="flex gap1 mt1"><input type="text" id="oi-'+rdv+'" placeholder="Nouvelle objection..." style="flex:1;font-size:11px"><button class="btn btn-g btn-sm" onclick="addObjBase(\''+rdv+'\')">+</button></div></div>';}).join('')+'</div>';
+}
+function addObjBase(rdv){var v=document.getElementById('oi-'+rdv).value.trim();if(!v)return;var o=getObjs();if(!o[rdv])o[rdv]=[];if(!o[rdv].includes(v))o[rdv].push(v);saveObjs(o);document.getElementById('oi-'+rdv).value='';renderObjSettings();}
+function removeObjBase(rdv,o){var os=getObjs();os[rdv]=(os[rdv]||[]).filter(function(x){return x!==o;});saveObjs(os);renderObjSettings();}
+
+// Default configs
+function defBlocs(){return{
+  phoning:{label:'Phoning',tech:['Pitch version 1','Pitch version 2','Qualification du prospect'],com:['Accroche telephonique','Gestion des contre-arguments','Prise de rendez-vous'],pro:['Ton & dynamisme','Posture telephonique','Naturel & fluidite']},
+  d0:{label:'D0 - Etude patrimoniale',tech:['Presentation cabinet & groupe Rayne','Regle / remuneration / process','Audit etat civil','Audit revenus','Audit patrimoine immobilier','Audit patrimoine financier'],com:['Mise en contexte','Qualite des questions','Objectifs & sensibilisation','Prise de RDV D1'],pro:['Structure du RDV','Vocabulaire & posture','Club Stellar & membership']},
+  d1scpi:{label:'D1 - SCPI',tech:['Recap audit','Effet levier bancaire','Fiscalite revenu foncier','Immobilier direct vs SCPI','Avantages SCPI','Contraintes SCPI','Secteurs & filtres Stellar','SCPI europeennes','Simulation & hypotheses'],com:['Gestion des objections','Conviction & closing','Sensibilisation finale'],pro:['Structure & fluidite','Vocabulaire technique','Pedagogie & vulgarisation']},
+  d1asset:{label:'D1 - Asset Management',tech:['Recap audit & objectifs','Enveloppes fiscales','Fiscalite AV & abattements','Aspect successoral','Gestion pilotee Amplegest','Produit structure','Contrat Generali Himalia'],com:['Gestion des objections','Conviction & closing','Sensibilisation'],pro:['Structure & fluidite','Pedagogie','Posture']},
+  d1pe:{label:'D1 - Private Equity',tech:['Recap audit','Definition PE & segments','Marche PE & surperformance','Resilience en crise','Appels de fonds & cashflow','Fiscalite PE','Altaroc : presentation & criteres'],com:['Gestion des objections','Storytelling & conviction','Sensibilisation & closing'],pro:['Structure & fluidite','Pedagogie','Posture']},
+  d2:{label:'D2 - Closing',tech:['Rappel contexte & objectif','Synthese solution','Logique patrimoniale globale','Valeur ajoutee Stellar'],com:['Gestion objections finales','Leadership & closing','Demande de decision','Prochaines etapes admin.'],pro:['Posture & leadership','Gestion emotionnelle','Vocabulaire & professionnalisme']}
+};}
+function defObjs(){return{
+  phoning:['Non merci, pas interesse','Je n\'ai pas le temps','Je suis deja suivi (banque)','Je suis deja suivi (cabinet)','Je n\'ai pas de patrimoine','Comment avez-vous eu mon numero ?','Envoyez-moi une brochure','J\'ai peur de divulguer mes infos','Je gere tout seul','Je prefere attendre','Vos services coutent trop cher'],
+  d0:['Pourquoi vous etes gratuit ?','J\'ai deja un conseiller','Je gere mes finances moi-meme','C\'est confidentiel ?','Ca prend combien de temps ?','Suis-je oblige d\'investir ?'],
+  d1scpi:['L\'immobilier c\'est risque','Pas de liquidite','Je prefere l\'immobilier direct','Les rendements baissent','C\'est complique','Le financement impossible','Les 10% de frais de sortie'],
+  d1asset:['La bourse c\'est risque','Mon banquier propose pareil','J\'ai peur de perdre','Fiscalite trop complexe','Pas le bon moment','Je veux gerer moi-meme'],
+  d1pe:['C\'est bloque trop longtemps','Risque trop eleve','Je ne connais pas le PE','Ticket minimum trop eleve','Frais trop eleves','Comment etre sur des performances ?'],
+  d2:['J\'ai besoin de reflechir','Mon conjoint doit valider','C\'est beaucoup d\'argent','Je veux consulter ailleurs','Pas le bon moment','Montrez-moi les chiffres encore']
+};}
+
+// Init
+async function init(){
+  var ok=await sbLoad();
+  if(ok){sbRealtime();initMgr();renderDash();}
+  else{document.getElementById('p-dash').innerHTML='<div style="text-align:center;padding:40px;color:#8B1515"><div style="font-size:32px">!</div><div>Impossible de se connecter a Supabase.</div></div>';}
+}
+init();
+
+// ══ MODULE ANALYSE IA ══
+var ANTHROPIC_KEY='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';
+
+async function analyzeTranscription(){
+  var consId=document.getElementById('ana-cons').value;
+  var rdv=document.getElementById('ana-rdv').value;
+  var text=document.getElementById('ana-text').value.trim();
+  if(!consId){alert('Selectionnez un conseiller.');return;}
+  if(!text){alert('Collez la retranscription du rendez-vous.');return;}
+  var cons=_st.conseillers.find(function(x){return x.id===consId;});
+  var blocs=getBlocs()[rdv];
+  var weights=getWeights()[rdv];
+  var btn=document.getElementById('ana-btn');
+  btn.textContent='Analyse en cours...';btn.disabled=true;
+  document.getElementById('ana-result').innerHTML='<div class="loading"><div class="spinner"></div>Analyse en cours par Claude AI...</div>';
+  try{
+    var prompt='Tu es un expert en formation commerciale specialise en gestion de patrimoine.\n\n'
+      +'Analyse la retranscription suivante d\'un rendez-vous de type "'+blocs.label+'" realise par le conseiller '+cons.name+'.\n\n'
+      +'SCRIPT ATTENDU PAR DIMENSION :\n\n'
+      +'TECHNIQUE (ponderation '+weights.tech+'%) - Blocs attendus :\n'
+      +blocs.tech.map(function(b,i){return(i+1)+'. '+b;}).join('\n')+'\n\n'
+      +'COMMERCIAL (ponderation '+weights.com+'%) - Blocs attendus :\n'
+      +blocs.com.map(function(b,i){return(i+1)+'. '+b;}).join('\n')+'\n\n'
+      +'PROFESSIONNALISME (ponderation '+weights.pro+'%) - Blocs attendus :\n'
+      +blocs.pro.map(function(b,i){return(i+1)+'. '+b;}).join('\n')+'\n\n'
+      +'RETRANSCRIPTION DU RENDEZ-VOUS :\n'+text+'\n\n'
+      +'Reponds UNIQUEMENT en JSON valide avec cette structure exacte :\n'
+      +'{\n'
+      +'"synthese": "paragraphe de synthese globale",\n'
+      +'"points_forts": ["point 1", "point 2", "point 3"],\n'
+      +'"points_faibles": ["point 1", "point 2", "point 3"],\n'
+      +'"oublis": ["element oublie 1", "element oublie 2"],\n'
+      +'"score_tech": 0-100,\n'
+      +'"score_com": 0-100,\n'
+      +'"score_pro": 0-100,\n'
+      +'"score_global": 0-100,\n'
+      +'"qualite_commerciale": "analyse de la qualite commerciale",\n'
+      +'"qualite_technique": "analyse de la qualite technique",\n'
+      +'"professionnalisme": "analyse du professionnalisme",\n'
+      +'"objections_detectees": [{"obj": "texte objection", "reponse": "Bien geree / Partiellement / Mal geree", "commentaire": "detail"}],\n'
+      +'"recommandations": ["recommandation 1", "recommandation 2", "recommandation 3"],\n'
+      +'"appreciation": "Excellent / Tres bon / Bon / Moyen / Faible / Critique"\n'
+      +'}\n'
+      +'Sois precis, concret et base-toi uniquement sur ce que dit vraiment la retranscription.';
+    var resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]})
+    });
+    var data=await resp.json();
+    if(!resp.ok)throw new Error(data.error?data.error.message:'API error '+resp.status);
+    var raw=data.content[0].text;
+    var jsonStr=raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+    var result=JSON.parse(jsonStr);
+    renderAnalysisResult(result,consId,rdv,blocs);
+  }catch(e){
+    document.getElementById('ana-result').innerHTML='<div class="al al-crit">Erreur : '+e.message+'</div>';
+    console.error(e);
+  }
+  btn.textContent='Lancer l\'analyse IA';btn.disabled=false;
+}
+
+function renderAnalysisResult(r,consId,rdv,blocs){
+  var lv_global=lv(r.score_global);
+  var html='<div id="ana-res-wrap">'
+    // Header scores
+    +'<div style="background:var(--n);border-radius:var(--rl);padding:20px;margin-bottom:16px;text-align:center">'
+    +'<div style="font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px">Analyse IA — '+blocs.label+'</div>'
+    +'<strong style="font-size:48px;color:'+lv_global.c+'">'+r.score_global+'</strong>'
+    +'<div style="font-size:12px;color:var(--mu)">/100</div>'
+    +'<div class="mt1"><span class="badge '+lv_global.cls+'" style="font-size:12px;padding:4px 14px">'+r.appreciation+'</span></div></div>'
+    // 3 scores
+    +'<div class="g3 mb3" style="gap:10px">'
+    +[{lbl:'Technique',s:r.score_tech},{lbl:'Commercial',s:r.score_com},{lbl:'Professionnalisme',s:r.score_pro}].map(function(x){
+      return'<div style="text-align:center;padding:12px;background:'+sc(x.s)+'15;border-radius:var(--rl);border:1px solid '+sc(x.s)+'30">'
+        +'<div class="fs11 mu">'+x.lbl+'</div>'
+        +'<div style="font-size:26px;font-weight:700;color:'+sc(x.s)+'">'+x.s+'</div>'
+        +'<div class="fs10 mu">/100</div></div>';
+    }).join('')+'</div>'
+    // Synthese
+    +'<div class="card mb2"><div class="sep">Synthese globale</div><p class="fs12" style="line-height:1.6">'+r.synthese+'</p></div>'
+    // 2 colonnes : points forts / faibles
+    +'<div class="g2 mb2" style="gap:12px">'
+    +'<div class="card"><div class="sep">Points forts</div>'
+    +r.points_forts.map(function(p){return'<div class="flex ac gap2 mb1"><span style="color:var(--tb);font-size:14px">V</span><span class="fs12">'+p+'</span></div>';}).join('')+'</div>'
+    +'<div class="card"><div class="sep">Points faibles</div>'
+    +r.points_faibles.map(function(p){return'<div class="flex ac gap2 mb1"><span style="color:var(--crit);font-size:14px">X</span><span class="fs12">'+p+'</span></div>';}).join('')+'</div>'
+    +'</div>'
+    // Oublis
+    +(r.oublis&&r.oublis.length?'<div class="card mb2"><div class="sep">Elements oublies ou manquants</div>'
+    +r.oublis.map(function(o){return'<div class="flex ac gap2 mb1"><span style="color:var(--moy);font-size:14px">!</span><span class="fs12">'+o+'</span></div>';}).join('')+'</div>':'')
+    // Dimensions
+    +'<div class="g3 mb2" style="gap:12px">'
+    +'<div class="card"><div class="sep">Qualite technique</div><p class="fs12" style="line-height:1.5">'+r.qualite_technique+'</p></div>'
+    +'<div class="card"><div class="sep">Qualite commerciale</div><p class="fs12" style="line-height:1.5">'+r.qualite_commerciale+'</p></div>'
+    +'<div class="card"><div class="sep">Professionnalisme</div><p class="fs12" style="line-height:1.5">'+r.professionnalisme+'</p></div>'
+    +'</div>'
+    // Objections
+    +(r.objections_detectees&&r.objections_detectees.length?'<div class="card mb2"><div class="sep">Objections detectees</div>'
+    +r.objections_detectees.map(function(o){
+      var ok=o.reponse&&o.reponse.toLowerCase().includes('bien');
+      return'<div style="padding:8px 10px;border:1px solid var(--bd);border-radius:var(--r);margin-bottom:6px">'
+        +'<div class="flex ac gap2"><span style="font-size:12px;font-weight:600;flex:1">'+o.obj+'</span>'
+        +'<span style="background:'+(ok?'var(--tb-bg)':'var(--crit-bg)')+';color:'+(ok?'var(--tb)':'var(--crit)')+';border-radius:20px;padding:2px 9px;font-size:10px;font-weight:700">'+o.reponse+'</span></div>'
+        +(o.commentaire?'<div class="fs11 mu mt1">'+o.commentaire+'</div>':'')+'</div>';
+    }).join('')+'</div>':'')
+    // Recommandations
+    +'<div class="card mb2"><div class="sep">Recommandations concretes</div>'
+    +r.recommandations.map(function(rec,i){return'<div class="flex ac gap2 mb2"><span style="background:var(--n);color:var(--g);border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">'+(i+1)+'</span><span class="fs12">'+rec+'</span></div>';}).join('')+'</div>'
+    // Scores ajustables
+    +'<div class="card mb3"><div class="sep">Scores proposes — ajustez si necessaire</div>'
+    +'<div class="g3" style="gap:12px">'
+    +[{k:'ana-st',lbl:'Technique',v:r.score_tech},{k:'ana-sc',lbl:'Commercial',v:r.score_com},{k:'ana-sp',lbl:'Professionnalisme',v:r.score_pro}].map(function(x){
+      return'<div><label class="lbl">'+x.lbl+'</label>'
+        +'<div class="flex ac gap2"><input type="range" id="'+x.k+'" min="0" max="100" step="1" value="'+x.v+'" style="flex:1" oninput="updateAnaScore()">'
+        +'<span id="'+x.k+'v" style="font-size:14px;font-weight:700;min-width:32px;color:'+sc(x.v)+'">'+x.v+'</span></div></div>';
+    }).join('')+'</div>'
+    +'<div class="flex ac gap2 mt2"><label class="lbl" style="margin:0">Score global :</label><strong id="ana-sg" style="font-size:20px;color:var(--n)">'+r.score_global+'</strong></div>'
+    +'</div>'
+    // Synthese editable
+    +'<div class="card mb3"><div class="sep">Synthese manager (modifiable)</div>'
+    +'<textarea id="ana-synthese" rows="3" style="width:100%">'+r.synthese+'</textarea></div>'
+    // Bouton enregistrer
+    +'<button class="btn btn-g w100" style="justify-content:center;padding:14px;font-size:14px" onclick="saveAnalysis(\''+consId+'\',\''+rdv+'\')">Enregistrer cette analyse dans la fiche du conseiller</button>'
+    +'</div>';
+  document.getElementById('ana-result').innerHTML=html;
+  // Store result for save
+  window._anaResult=r;
+}
+
+function updateAnaScore(){
+  var t=parseInt(document.getElementById('ana-st').value);
+  var c=parseInt(document.getElementById('ana-sc').value);
+  var p=parseInt(document.getElementById('ana-sp').value);
+  var w=getWeights()[document.getElementById('ana-rdv').value];
+  var g=Math.round(t*w.tech/100+c*w.com/100+p*w.pro/100);
+  document.getElementById('ana-stv').textContent=t;document.getElementById('ana-stv').style.color=sc(t);
+  document.getElementById('ana-scv').textContent=c;document.getElementById('ana-scv').style.color=sc(c);
+  document.getElementById('ana-spv').textContent=p;document.getElementById('ana-spv').style.color=sc(p);
+  document.getElementById('ana-sg').textContent=g;document.getElementById('ana-sg').style.color=sc(g);
+}
+
+async function saveAnalysis(consId,rdv){
+  var t=parseInt(document.getElementById('ana-st').value);
+  var c=parseInt(document.getElementById('ana-sc').value);
+  var p=parseInt(document.getElementById('ana-sp').value);
+  var w=getWeights()[rdv];
+  var g=Math.round(t*w.tech/100+c*w.com/100+p*w.pro/100);
+  var synthese=document.getElementById('ana-synthese').value;
+  var r=window._anaResult||{};
+  var payload={
+    cons_id:consId,rdv:rdv,eval_type:'Analyse IA',
+    manager:_curMgr()||'Manager',
+    eval_date:new Date().toISOString().split('T')[0],
+    score_tech:t,score_com:c,score_pro:p,score_global:g,
+    synthese:synthese,
+    blocs_tech:[],blocs_com:[],blocs_pro:[],
+    objs:(r.objections_detectees||[]).map(function(o){return{text:o.obj,ok:o.reponse&&o.reponse.toLowerCase().includes('bien'),note:o.commentaire||''};}),
+    ia_data:JSON.stringify({points_forts:r.points_forts,points_faibles:r.points_faibles,oublis:r.oublis,recommandations:r.recommandations})
+  };
+  var res=await _sb.from('evaluations').insert(payload);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();
+  toast('Analyse enregistree dans la fiche du conseiller V',true);
+  document.getElementById('ana-result').innerHTML='<div class="al al-ok" style="font-size:13px;padding:14px">V Analyse enregistree avec succes dans la fiche de '+(_st.conseillers.find(function(x){return x.id===consId;})||{name:'conseiller'}).name+'.<br><button class="btn btn-n btn-sm mt1" onclick="openFiche(\''+consId+'\')">Voir la fiche</button></div>';
+}
+
+// ══ MODULE PLANNING ══
+var _planningWeek=0; // 0 = semaine courante
+
+async function savePlannedEval(){
+  var consId=document.getElementById('plan-cons').value;
+  var manager=document.getElementById('plan-mgr').value;
+  var rdv=document.getElementById('plan-rdv').value;
+  var type=document.getElementById('plan-type').value;
+  var date=document.getElementById('plan-date').value;
+  var prio=document.getElementById('plan-prio').value;
+  if(!consId||!date){alert('Remplissez tous les champs obligatoires.');return;}
+  var payload={
+    cons_id:consId,rdv:rdv,eval_type:type,
+    manager:manager,eval_date:date,
+    score_tech:0,score_com:0,score_pro:0,score_global:0,
+    synthese:'',blocs_tech:[],blocs_com:[],blocs_pro:[],objs:[],
+    planned:true,planned_priority:prio,planned_status:'a_faire'
+  };
+  var res=await _sb.from('evaluations').insert(payload);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();renderPlanning();
+  closeModal('mod-plan');
+  toast('Evaluation planifiee V',true);
+}
+
+async function completePlannedEval(eid){
+  // Mark as done and open eval form
+  var e=_st.evals.find(function(x){return x.id===eid;});
+  if(!e)return;
+  go('eval');
+  setTimeout(function(){
+    var cs=document.getElementById('ev-cons');
+    var rv=document.getElementById('ev-rdv');
+    var tp=document.getElementById('ev-type');
+    if(cs)cs.value=e.cons_id;
+    if(rv){rv.value=e.rdv;onRdvChange();}
+    if(tp)tp.value=e.eval_type||'Drill';
+  },100);
+}
+
+async function deletePlannedEval(eid){
+  if(!confirm('Supprimer cette evaluation planifiee ?'))return;
+  await _sb.from('evaluations').delete().eq('id',eid);
+  await sbLoad();renderPlanning();
+}
+
+function renderPlanning(){
+  var el=document.getElementById('p-planning');if(!el)return;
+  var now=new Date();
+  // Get start of week + offset
+  var day=now.getDay();var diff=day===0?-6:1-day;
+  var weekStart=new Date(now);weekStart.setDate(now.getDate()+diff+(_planningWeek*7));weekStart.setHours(0,0,0,0);
+  var weekEnd=new Date(weekStart);weekEnd.setDate(weekStart.getDate()+6);weekEnd.setHours(23,59,59,999);
+  var fmt=function(d){return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});};
+  var days=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+
+  // Get planned evals for this week
+  var myC=myConseillers().map(function(c){return c.id;});
+  var weekEvs=_st.evals.filter(function(e){
+    if(!e.planned)return false;
+    if(!myC.includes(e.cons_id)&&!isAdmin())return false;
+    var d=new Date(e.eval_date);
+    return d>=weekStart&&d<=weekEnd;
+  });
+
+  // Count overdue planned
+  var overdue=_st.evals.filter(function(e){
+    if(!e.planned||e.planned_status==='realise')return false;
+    if(!myC.includes(e.cons_id)&&!isAdmin())return false;
+    return new Date(e.eval_date)<now;
+  }).length;
+
+  var h='<div class="flex jb ac mb3">'
+    +'<div><div style="font-size:20px;font-weight:700;color:var(--n)">Planning des evaluations</div>'
+    +'<div class="fs12 mu mt1">Semaine du '+fmt(weekStart)+' au '+fmt(weekEnd)+'</div></div>'
+    +'<div class="flex gap2 ac">'
+    +(overdue>0?'<span style="background:var(--crit-bg);color:var(--crit);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:700">'+overdue+' en retard</span>':'')
+    +'<button class="btn btn-o btn-sm" onclick="_planningWeek--;renderPlanning()">&#8592; Semaine precedente</button>'
+    +'<button class="btn btn-o btn-sm" onclick="_planningWeek=0;renderPlanning()">Aujourd\'hui</button>'
+    +'<button class="btn btn-o btn-sm" onclick="_planningWeek++;renderPlanning()">Semaine suivante &#8594;</button>'
+    +'<button class="btn btn-g btn-sm" onclick="openPlanModal()">+ Planifier</button>'
+    +'</div></div>';
+
+  // Week grid
+  h+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px">';
+  for(var i=0;i<7;i++){
+    var dayDate=new Date(weekStart);dayDate.setDate(weekStart.getDate()+i);
+    var dayStr=dayDate.toISOString().split('T')[0];
+    var isToday=dayStr===now.toISOString().split('T')[0];
+    var dayEvs=weekEvs.filter(function(e){return e.eval_date===dayStr;});
+    h+='<div style="border-radius:var(--rl);border:1px solid '+(isToday?'var(--g)':'var(--bd)')+';background:'+(isToday?'var(--gp)':'var(--w)')+';min-height:120px">'
+      +'<div style="padding:8px 10px;border-bottom:1px solid var(--bd);background:'+(isToday?'var(--g)':'var(--ow)')+';border-radius:var(--rl) var(--rl) 0 0">'
+      +'<div style="font-size:11px;font-weight:700;color:'+(isToday?'var(--n)':'var(--mu)')+'">'+days[i]+'</div>'
+      +'<div style="font-size:10px;color:'+(isToday?'var(--n)':'var(--mu)')+'">'+fmt(dayDate)+'</div></div>'
+      +'<div style="padding:6px">'
+      +dayEvs.map(function(e){
+        var c=_st.conseillers.find(function(x){return x.id===e.cons_id;})||{name:'?'};
+        var isLate=new Date(e.eval_date)<now&&e.planned_status!=='realise';
+        var statusColor=e.planned_status==='realise'?'var(--tb)':isLate?'var(--crit)':'var(--bon)';
+        var statusLabel=e.planned_status==='realise'?'Realise':isLate?'En retard':'A faire';
+        var prioColor=e.planned_priority==='haute'?'var(--crit)':e.planned_priority==='moyenne'?'var(--moy)':'var(--mu)';
+        return'<div style="background:var(--n);border-radius:var(--r);padding:6px 8px;margin-bottom:4px;border-left:3px solid '+statusColor+'">'
+          +'<div style="font-size:11px;font-weight:600;color:#fff">'+c.name+'</div>'
+          +'<div style="font-size:10px;color:var(--mu)">'+DB.rdv()[e.rdv].label+'</div>'
+          +'<div class="flex ac gap1 mt1">'
+          +(e.eval_type?'<span style="background:var(--bon-bg);color:var(--bon);border-radius:3px;padding:1px 5px;font-size:9px">'+e.eval_type+'</span>':'')
+          +'<span style="background:'+statusColor+'20;color:'+statusColor+';border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700">'+statusLabel+'</span>'
+          +(e.planned_priority?'<span style="font-size:9px;color:'+prioColor+'">'+e.planned_priority+'</span>':'')
+          +'</div>'
+          +'<div class="flex gap1 mt1">'
+          +(e.planned_status!=='realise'?'<button style="font-size:9px;padding:2px 6px;background:var(--tb);color:#fff;border:none;border-radius:3px;cursor:pointer" onclick="completePlannedEval(\''+e.id+'\')">Evaluer</button>':'')
+          +'<button style="font-size:9px;padding:2px 6px;background:var(--crit-bg);color:var(--crit);border:none;border-radius:3px;cursor:pointer" onclick="deletePlannedEval(\''+e.id+'\')">X</button>'
+          +'</div></div>';
+      }).join('')
+      +'</div></div>';
+  }
+  h+='</div>';
+
+  // Overdue list
+  var overdueEvs=_st.evals.filter(function(e){
+    if(!e.planned||e.planned_status==='realise')return false;
+    if(!myC.includes(e.cons_id)&&!isAdmin())return false;
+    return new Date(e.eval_date)<weekStart;
+  });
+  if(overdueEvs.length){
+    h+='<div class="card mt3"><div class="card-title" style="color:var(--crit)">Evaluations en retard</div>'
+      +overdueEvs.map(function(e){
+        var c=_st.conseillers.find(function(x){return x.id===e.cons_id;})||{name:'?'};
+        return'<div class="flex ac gap2" style="padding:8px 0;border-bottom:1px solid var(--bd)">'
+          +'<div class="ava" style="width:28px;height:28px;font-size:10px;background:var(--crit)">'+ini(c.name)+'</div>'
+          +'<div class="f1"><div class="fs12 bold">'+c.name+'</div><div class="fs11 mu">'+DB.rdv()[e.rdv].label+(e.eval_type?' ['+e.eval_type+']':'')+'</div></div>'
+          +'<span class="fs11 mu">Prevu le '+fd(e.eval_date)+'</span>'
+          +'<button class="btn btn-g btn-sm" style="padding:4px 9px;font-size:10px" onclick="completePlannedEval(\''+e.id+'\')">Evaluer</button>'
+          +'<button class="btn btn-r btn-sm" style="padding:4px 9px;font-size:10px" onclick="deletePlannedEval(\''+e.id+'\')">X</button>'
+          +'</div>';
+      }).join('')+'</div>';
+  }
+  el.innerHTML=h;
+}
+
+function openPlanModal(){
+  var myCons=myConseillers();
+  var mgrs=isAdmin()?Object.keys(USERS):[_curMgr()];
+  document.getElementById('plan-cons').innerHTML=myCons.map(function(c){return'<option value="'+c.id+'">'+c.name+'</option>';}).join('');
+  document.getElementById('plan-mgr').innerHTML=mgrs.map(function(n){return'<option value="'+n+'"'+(n===_curMgr()?' selected':'')+'>'+n+'</option>';}).join('');
+  document.getElementById('plan-date').value=new Date().toISOString().split('T')[0];
+  document.getElementById('mod-plan').classList.remove('hidden');
+}
+
+// ══ MODULE ANALYSE IA ══
+var ANTHROPIC_KEY='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';
+
+function initAnalyse(){
+  var myCons=myConseillers();
+  var sel=document.getElementById('an-cons');
+  if(sel)sel.innerHTML=myCons.map(function(c){return'<option value="'+c.id+'">'+c.name+'</option>';}).join('');
+  var dateEl=document.getElementById('an-date');
+  if(dateEl)dateEl.value=new Date().toISOString().split('T')[0];
+}
+async function analyzeTranscript(){
+  var consId=document.getElementById('an-cons').value;
+  var rdv=document.getElementById('an-rdv').value;
+  var text=document.getElementById('an-text').value.trim();
+  if(!consId||!text){alert('Selectionnez un conseiller et collez la retranscription.');return;}
+  var cons=_st.conseillers.find(function(x){return x.id===consId;});
+  if(!cons)return;
+  var blocs=getBlocs()[rdv];
+  if(!blocs)return;
+
+  document.getElementById('an-result').innerHTML='<div class="loading"><div class="spinner"></div>Analyse en cours par Claude...</div>';
+  document.getElementById('an-result').style.display='block';
+  document.getElementById('an-submit').disabled=true;
+
+  var blocsList='';
+  ['tech','com','pro'].forEach(function(dim){
+    var dlbl={'tech':'Technique','com':'Commercial','pro':'Professionnalisme'}[dim];
+    blocsList+='\n'+dlbl+':\n'+blocs[dim].map(function(b,i){return'  '+(i+1)+'. '+b;}).join('\n');
+  });
+
+  var prompt='Tu es un expert en formation commerciale pour un cabinet de gestion de patrimoine (Stellar Invest).\n\n'
+    +'Analyse cette retranscription d\'un rendez-vous de type "'+blocs.label+'" realise par '+cons.name+'.\n\n'
+    +'BLOCS D\'EVALUATION ATTENDUS POUR CE TYPE DE RDV:\n'+blocsList+'\n\n'
+    +'RETRANSCRIPTION DU RENDEZ-VOUS:\n'+text+'\n\n'
+    +'Reponds UNIQUEMENT en JSON valide avec cette structure exacte:\n'
+    +'{\n'
+    +'"synthese": "synthese globale en 3-4 phrases",\n'
+    +'"points_forts": ["point 1", "point 2", "point 3"],\n'
+    +'"points_faibles": ["point 1", "point 2", "point 3"],\n'
+    +'"oublis": ["element oublie 1", "element oublie 2"],\n'
+    +'"score_tech": 72,\n'
+    +'"score_com": 68,\n'
+    +'"score_pro": 75,\n'
+    +'"qualite_commerciale": "evaluation en 2-3 phrases",\n'
+    +'"qualite_technique": "evaluation en 2-3 phrases",\n'
+    +'"professionnalisme": "evaluation en 2-3 phrases",\n'
+    +'"objections_detectees": ["objection 1", "objection 2"],\n'
+    +'"qualite_reponses_objections": "evaluation en 2-3 phrases",\n'
+    +'"recommandations": ["recommandation 1", "recommandation 2", "recommandation 3"],\n'
+    +'"appreciation_globale": "appreciation en 1 phrase"\n'
+    +'}';
+
+  try{
+    var resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]})
+    });
+    var data=await resp.json();
+    if(data.error){throw new Error(data.error.message);}
+    var raw=data.content[0].text.trim();
+    // Extract JSON
+    var jsonMatch=raw.match(/\{[\s\S]*\}/);
+    if(!jsonMatch)throw new Error('Reponse invalide');
+    var analysis=JSON.parse(jsonMatch[0]);
+    displayAnalysis(analysis,consId,rdv,cons.name,blocs.label);
+  }catch(e){
+    document.getElementById('an-result').innerHTML='<div class="al al-crit">Erreur analyse: '+e.message+'</div>';
+    document.getElementById('an-submit').disabled=false;
+  }
+}
+
+var _currentAnalysis=null;
+
+function displayAnalysis(a,consId,rdv,consName,rdvLabel){
+  _currentAnalysis={analysis:a,consId:consId,rdv:rdv};
+  var g=Math.round(a.score_tech*0.35+a.score_com*0.40+a.score_pro*0.25);
+  var l=lv(g);
+  var h='<div style="border:2px solid var(--g);border-radius:var(--rl);padding:20px;margin-top:16px">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--bd)">';
+  h+='<div><div style="font-size:16px;font-weight:700;color:var(--n)">Analyse IA — '+consName+'</div>';
+  h+='<div class="fs12 mu">'+rdvLabel+' — par Claude AI</div></div>';
+  h+='<div style="text-align:center"><strong style="font-size:36px;color:'+l.c+'">'+g+'</strong><div class="fs11 mu">/100</div><span class="badge '+l.cls+'">'+l.lbl+'</span></div></div>';
+  // Scores
+  h+='<div class="g3 mb2" style="gap:10px">';
+  h+='<div style="text-align:center;padding:12px;background:'+sc(a.score_tech)+'18;border-radius:var(--r)"><div class="fs11 mu">Technique</div>';
+  h+='<input type="number" id="adj-tech" value="'+a.score_tech+'" min="0" max="100" style="font-size:22px;font-weight:700;color:'+sc(a.score_tech)+';width:70px;border:none;background:transparent;text-align:center" oninput="updateAdjScore()"></div>';
+  h+='<div style="text-align:center;padding:12px;background:'+sc(a.score_com)+'18;border-radius:var(--r)"><div class="fs11 mu">Commercial</div>';
+  h+='<input type="number" id="adj-com" value="'+a.score_com+'" min="0" max="100" style="font-size:22px;font-weight:700;color:'+sc(a.score_com)+';width:70px;border:none;background:transparent;text-align:center" oninput="updateAdjScore()"></div>';
+  h+='<div style="text-align:center;padding:12px;background:'+sc(a.score_pro)+'18;border-radius:var(--r)"><div class="fs11 mu">Professionnalisme</div>';
+  h+='<input type="number" id="adj-pro" value="'+a.score_pro+'" min="0" max="100" style="font-size:22px;font-weight:700;color:'+sc(a.score_pro)+';width:70px;border:none;background:transparent;text-align:center" oninput="updateAdjScore()"></div>';
+  h+='</div>';
+  h+='<div id="adj-global-badge" style="text-align:center;margin-bottom:16px"><span class="badge '+l.cls+'" style="font-size:13px;padding:4px 16px" id="adj-global-lbl">Score ajuste : '+g+'</span></div>';
+  // Synthese
+  h+='<div class="sep">Synthese globale</div><div class="fs12" style="background:var(--gp);padding:12px;border-radius:var(--r);margin-bottom:12px">'+a.synthese+'</div>';
+  h+='<div class="sep">Appreciation</div><div class="fs12 mu" style="padding:8px 0">'+a.appreciation_globale+'</div>';
+  // Points forts / faibles
+  h+='<div class="g2 mb2" style="gap:12px">';
+  h+='<div><div class="sep">Points forts</div>'+a.points_forts.map(function(p){return'<div class="al al-ok" style="margin-bottom:4px">+ '+p+'</div>';}).join('')+'</div>';
+  h+='<div><div class="sep">Points faibles</div>'+a.points_faibles.map(function(p){return'<div class="al al-warn" style="margin-bottom:4px">- '+p+'</div>';}).join('')+'</div>';
+  h+='</div>';
+  // Oublis
+  if(a.oublis&&a.oublis.length){
+    h+='<div class="sep">Elements oublies ou imprecis</div>';
+    h+=a.oublis.map(function(o){return'<div class="al al-crit" style="margin-bottom:4px">! '+o+'</div>';}).join('');
+  }
+  // Qualites
+  h+='<div class="g3 mb2" style="gap:10px;margin-top:12px">';
+  h+='<div class="card"><div class="card-title">Commercial</div><div class="fs12">'+a.qualite_commerciale+'</div></div>';
+  h+='<div class="card"><div class="card-title">Technique</div><div class="fs12">'+a.qualite_technique+'</div></div>';
+  h+='<div class="card"><div class="card-title">Professionnalisme</div><div class="fs12">'+a.professionnalisme+'</div></div>';
+  h+='</div>';
+  // Objections
+  if(a.objections_detectees&&a.objections_detectees.length){
+    h+='<div class="sep">Objections detectees</div>';
+    h+=a.objections_detectees.map(function(o){return'<span style="display:inline-block;background:var(--nm);color:#fff;border-radius:20px;padding:3px 10px;font-size:11px;margin:2px">'+o+'</span>';}).join(' ');
+    h+='<div class="fs12 mu" style="margin-top:8px">'+a.qualite_reponses_objections+'</div>';
+  }
+  // Recommandations
+  h+='<div class="sep">Recommandations</div>';
+  h+=a.recommandations.map(function(r,i){return'<div class="drill-card"><div class="drill-title">Recommandation '+(i+1)+'</div><div class="drill-body">'+r+'</div></div>';}).join('');
+  // Actions
+  h+='<div class="flex gap2 mt3">';
+  h+='<button class="btn btn-g f1" style="justify-content:center" onclick="saveAnalysis()">Enregistrer dans la fiche conseiller</button>';
+  h+='<button class="btn btn-o" onclick="document.getElementById(\'an-result\').style.display=\'none\';document.getElementById(\'an-submit\').disabled=false;">Annuler</button>';
+  h+='</div></div>';
+  document.getElementById('an-result').innerHTML=h;
+  document.getElementById('an-submit').disabled=false;
+}
+
+function updateAdjScore(){
+  var t=parseInt(document.getElementById('adj-tech').value)||0;
+  var c=parseInt(document.getElementById('adj-com').value)||0;
+  var p=parseInt(document.getElementById('adj-pro').value)||0;
+  var g=Math.round(t*0.35+c*0.40+p*0.25);
+  var l=lv(g);
+  var badge=document.getElementById('adj-global-lbl');
+  if(badge){badge.textContent='Score ajuste : '+g;badge.className='badge '+l.cls;}
+}
+
+async function saveAnalysis(){
+  if(!_currentAnalysis)return;
+  var t=parseInt(document.getElementById('adj-tech').value)||_currentAnalysis.analysis.score_tech;
+  var c=parseInt(document.getElementById('adj-com').value)||_currentAnalysis.analysis.score_com;
+  var p=parseInt(document.getElementById('adj-pro').value)||_currentAnalysis.analysis.score_pro;
+  var g=Math.round(t*0.35+c*0.40+p*0.25);
+  var today=new Date().toISOString().split('T')[0];
+  var payload={
+    cons_id:_currentAnalysis.consId,
+    rdv:_currentAnalysis.rdv,
+    eval_type:'Analyse RDV',
+    source:'ia',
+    manager:_curMgr()||'Manager',
+    eval_date:today,
+    score_tech:t,score_com:c,score_pro:p,score_global:g,
+    blocs_tech:[],blocs_com:[],blocs_pro:[],objs:[],
+    synthese:_currentAnalysis.analysis.synthese,
+    ai_report:_currentAnalysis.analysis
+  };
+  var res=await _sb.from('evaluations').insert(payload);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();
+  toast('Analyse enregistree dans la fiche conseiller',true);
+  // Reset form
+  document.getElementById('an-text').value='';
+  document.getElementById('an-result').style.display='none';
+  _currentAnalysis=null;
+  go('equipe');
+}
+// Mark planning item done after eval saved
+async function savePlanningItemFull(){
+  var consId=document.getElementById('pl-cons').value;
+  var rdv=document.getElementById('pl-rdv').value;
+  var evalType=document.getElementById('pl-type').value;
+  var date=document.getElementById('pl-date').value;
+  var notes=document.getElementById('pl-notes').value.trim();
+  var priority=document.getElementById('pl-priority').value;
+  var mgr=document.getElementById('pl-mgr')?document.getElementById('pl-mgr').value:(_curMgr()||'Manager');
+  if(!consId||!date){alert('Conseiller et date obligatoires.');return;}
+  var res=await _sb.from('planning').insert({cons_id:consId,rdv:rdv,eval_type:evalType,planned_date:date,manager:mgr,notes:notes,priority:priority,status:'a_faire'});
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();closeModal('mod-planning-full');renderWeekPlanning();toast('Planifie',true);
+}
+async function afterEvalSaved(){
+  if(window._planningItemId){
+    await _sb.from('planning').update({status:'realise'}).eq('id',window._planningItemId);
+    window._planningItemId=null;
+    await sbLoad();
+  }
+}
+
+// ══ MODULE PLANNING ══
+async function savePlanningItem(){
+  var consId=document.getElementById('pl-cons').value;
+  var rdv=document.getElementById('pl-rdv').value;
+  var evalType=document.getElementById('pl-type').value;
+  var date=document.getElementById('pl-date').value;
+  var notes=document.getElementById('pl-notes').value.trim();
+  var priority=document.getElementById('pl-priority').value;
+  if(!consId||!date){alert('Conseiller et date obligatoires.');return;}
+  var payload={cons_id:consId,rdv:rdv,eval_type:evalType,planned_date:date,manager:_curMgr()||'Manager',notes:notes,priority:priority,status:'a_faire'};
+  var res=await _sb.from('planning').insert(payload);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();closeModal('mod-planning');renderWeekPlanning();
+  toast('Evaluation planifiee',true);
+}
+
+async function updatePlanningStatus(id,status){
+  await _sb.from('planning').update({status:status}).eq('id',id);
+  await sbLoad();renderWeekPlanning();
+}
+
+async function deletePlanningItem(id){
+  if(!confirm('Supprimer cette planification ?'))return;
+  await _sb.from('planning').delete().eq('id',id);
+  await sbLoad();renderWeekPlanning();
+}
+
+var _weekOffset=0;
+function getWeekDates(offset){
+  var now=new Date();
+  var day=now.getDay();
+  var diff=now.getDate()-day+(day===0?-6:1)+offset*7;
+  var monday=new Date(now.setDate(diff));
+  var days=[];
+  for(var i=0;i<7;i++){
+    var d=new Date(monday);d.setDate(monday.getDate()+i);
+    days.push(d);
+  }
+  return days;
+}
+
+function renderWeekPlanning(){
+  var el=document.getElementById('p-planning');if(!el)return;
+  var days=getWeekDates(_weekOffset);
+  var dayNames=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  var myItems=isAdmin()?(_st.planning||[]):(_st.planning||[]).filter(function(p){return p.manager===_curMgr();});
+  var today=new Date().toISOString().split('T')[0];
+  var late=myItems.filter(function(p){return p.status==='a_faire'&&p.planned_date<today;}).length;
+  var h='<div class="flex jb ac mb3">';
+  h+='<div><div style="font-size:20px;font-weight:700;color:var(--n)">Planning de la semaine</div>';
+  h+='<div class="fs12 mu mt1">'+days[0].toLocaleDateString('fr-FR')+' -- '+days[6].toLocaleDateString('fr-FR')+'</div></div>';
+  h+='<div class="flex gap2 ac">';
+  if(late>0)h+='<span style="background:var(--crit);color:#fff;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:700">'+late+' en retard</span>';
+  h+='<button class="btn btn-o btn-sm" onclick="_weekOffset--;renderWeekPlanning()">Prev</button>';
+  h+='<button class="btn btn-o btn-sm" onclick="_weekOffset=0;renderWeekPlanning()">Aujourd'hui</button>';
+  h+='<button class="btn btn-o btn-sm" onclick="_weekOffset++;renderWeekPlanning()">Suiv</button>';
+  h+='<button class="btn btn-g btn-sm" onclick="openPlanningModal()">+ Planifier</button></div></div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px">';
+  days.forEach(function(d,i){
+    var ds=d.toISOString().split('T')[0];
+    var isToday=ds===today;
+    var dayItems=myItems.filter(function(p){return p.planned_date===ds;});
+    h+='<div style="border:1px solid '+(isToday?'var(--g)':'var(--bd)')+';border-radius:var(--r);padding:8px;background:'+(isToday?'var(--gp)':'var(--w)')+';min-height:140px">';
+    h+='<div style="font-size:11px;font-weight:700;color:'+(isToday?'var(--g)':'var(--mu)')+';margin-bottom:6px">'+dayNames[i]+' '+d.getDate()+'</div>';
+    dayItems.forEach(function(item){
+      var cons=_st.conseillers.find(function(c){return c.id===item.cons_id;});
+      var isLate=item.status==='a_faire'&&ds<today;
+      var sc2=item.status==='realise'?'var(--tb)':isLate?'var(--crit)':'var(--bon)';
+      var sl=item.status==='realise'?'Fait':isLate?'Retard':'A faire';
+      h+='<div style="background:'+sc2+'12;border:1px solid '+sc2+'40;border-radius:5px;padding:6px;margin-bottom:4px;cursor:pointer" onclick="openPlanningItemEval(''+item.id+'')">';
+      h+='<div style="font-weight:700;font-size:11px;color:var(--n)">'+(cons?cons.name:'?')+'</div>';
+      h+='<div style="font-size:10px;color:var(--mu)">'+item.eval_type+' -- '+(DB.rdv()[item.rdv]?DB.rdv()[item.rdv].label:item.rdv)+'</div>';
+      h+='<div style="display:flex;align-items:center;gap:4px;margin-top:3px">';
+      h+='<span style="background:'+sc2+';color:#fff;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700">'+sl+'</span>';
+      if(item.priority==='haute')h+='<span style="color:var(--crit);font-weight:700;font-size:10px">!</span>';
+      h+='</div>';
+      if(item.notes)h+='<div style="color:var(--mu);font-size:9px;margin-top:2px">'+item.notes+'</div>';
+      h+='<div style="display:flex;gap:3px;margin-top:5px">';
+      if(item.status!=='realise')h+='<button style="font-size:9px;padding:2px 6px;background:var(--tb);color:#fff;border:none;border-radius:3px;cursor:pointer" onclick="event.stopPropagation();markPlanDone(''+item.id+'')">Fait</button>';
+      if(item.status!=='reporte')h+='<button style="font-size:9px;padding:2px 6px;background:var(--moy-bg);color:var(--moy);border:1px solid var(--moy);border-radius:3px;cursor:pointer" onclick="event.stopPropagation();markPlanReporte(''+item.id+'')">Reporter</button>';
+      h+='<button style="font-size:9px;padding:2px 6px;background:var(--crit-bg);color:var(--crit);border:1px solid var(--crit);border-radius:3px;cursor:pointer" onclick="event.stopPropagation();deletePlanningItem(''+item.id+'')">X</button>';
+      h+='</div></div>';
+    });
+    h+='</div>';
+  });
+  h+='</div>';
+  // Overdue section
+  var overdue=myItems.filter(function(p){return p.status==='a_faire'&&p.planned_date<days[0].toISOString().split('T')[0];});
+  if(overdue.length){
+    h+='<div class="card mt2"><div class="card-title" style="color:var(--crit)">En retard ('+overdue.length+')</div>';
+    h+=overdue.map(function(item){
+      var cons=_st.conseillers.find(function(c){return c.id===item.cons_id;});
+      return'<div class="flex ac gap2" style="padding:8px 0;border-bottom:1px solid var(--bd);cursor:pointer" onclick="openPlanningItemEval(''+item.id+'')">'
+        +'<div class="ava" style="width:28px;height:28px;font-size:10px;background:var(--crit)">'+ini(cons?cons.name:'?')+'</div>'
+        +'<div class="f1"><div class="fs12 bold">'+(cons?cons.name:'?')+'</div>'
+        +'<div class="fs11 mu">'+item.eval_type+' -- '+(DB.rdv()[item.rdv]?DB.rdv()[item.rdv].label:item.rdv)+'</div></div>'
+        +'<span class="fs11 mu">Prevu le '+fd(item.planned_date)+'</span>'
+        +'<button class="btn btn-g btn-sm" onclick="event.stopPropagation();openPlanningItemEval(''+item.id+'')">Evaluer</button>'
+        +'</div>';
+    }).join('')+'</div>';
+  }
+  el.innerHTML=h;
+}
+function openPlanningItemEval(planId){
+  var item=(_st.planning||[]).find(function(p){return p.id===planId;});if(!item)return;
+  // Mark as in progress and open eval
+  go('eval');
+  setTimeout(function(){
+    var cs=document.getElementById('ev-cons');var rv=document.getElementById('ev-rdv');var tp=document.getElementById('ev-type');
+    if(cs)cs.value=item.cons_id;
+    if(rv){rv.value=item.rdv;onRdvChange();}
+    if(tp)tp.value=item.eval_type||'Drill';
+    // Store planning item id to mark done after save
+    window._planningItemId=planId;
+  },80);
+}
+async function markPlanDone(id){
+  await _sb.from('planning').update({status:'realise'}).eq('id',id);
+  await sbLoad();renderWeekPlanning();toast('Marque comme realise',true);
+}
+async function markPlanReporte(id){
+  await _sb.from('planning').update({status:'reporte'}).eq('id',id);
+  await sbLoad();renderWeekPlanning();toast('Reporte',true);
+}
+function openPlanningModal(){
   var myCons=myConseillers();
   var consSelect='<select id="pl-cons" style="width:100%">'+myCons.map(function(c){return'<option value="'+c.id+'">'+c.name+'</option>';}).join('')+'</select>';
   var h='<div class="modal-title">Planifier une evaluation</div>';
@@ -2379,18 +4413,704 @@ function openPlanningModal(){
   document.getElementById('mod-planning').classList.remove('hidden');
 }
 
+
+// ══ SUIVI MANAGERIAL MODULE ══
+function openSuiviManagerial(cid){
+  var c=_st.conseillers.find(function(x){return x.id===cid;});if(!c)return;
+  var entries=(_st.suivi||[]).filter(function(e){return e.cons_id===cid;});
+  var el=document.getElementById('fiche-suivi-content');if(!el)return;
+
+  var h='<div class="flex jb ac mb3">'
+    +'<div style="font-size:16px;font-weight:700;color:var(--n)">Suivi managerial -- '+c.name+'</div>'
+    +'<div class="flex gap2">'
+    +'<button class="btn btn-g btn-sm" onclick="openSuiviModal(\'point_mensuel\',\''+cid+'\')">+ Point mensuel</button>'
+    +'<button class="btn btn-n btn-sm" onclick="openSuiviModal(\'commentaire\',\''+cid+'\')">+ Commentaire</button>'
+    +'</div></div>';
+
+  if(!entries.length){
+    h+='<div class="card" style="text-align:center;padding:30px;color:var(--mu)">Aucun suivi enregistre pour ce conseiller.</div>';
+    el.innerHTML=h;return;
+  }
+
+  var typeLabels={point_mensuel:'Point mensuel',commentaire:'Commentaire',integration:'Point integration',annuel:'Point annuel'};
+  var typeColors={point_mensuel:'var(--bon)',commentaire:'var(--tb)',integration:'var(--g)',annuel:'var(--elite)'};
+  var typeIcons={point_mensuel:'📊',commentaire:'💬',integration:'🎯',annuel:'📈'};
+
+  // Timeline view
+  h+='<div class="flex gap3" style="align-items:start">';
+  // Left: chronological list
+  h+='<div style="flex:1">';
+  entries.forEach(function(entry){
+    var content=entry.content||{};
+    var typeColor=typeColors[entry.type]||'var(--mu)';
+    var niveauColors={'Tres satisfaisant':'var(--tb)','Satisfaisant':'var(--bon)','A surveiller':'var(--moy)','Prioritaire':'var(--crit)'};
+    var niveauCls={'Tres satisfaisant':'al-ok','Satisfaisant':'al-info','A surveiller':'al-warn','Prioritaire':'al-crit'};
+    h+='<div class="card mb2">';
+    h+='<div class="flex jb ac mb2">';
+    h+='<div class="flex ac gap2"><span style="font-size:18px">'+(typeIcons[entry.type]||'📝')+'</span>';
+    h+='<div><strong style="font-size:14px">'+(typeLabels[entry.type]||entry.type)+(entry.mois?' -- '+entry.mois:'')+'</strong>';
+    h+='<div class="fs11 mu">'+fd(entry.created_at)+' par '+entry.manager+'</div></div></div>';
+    h+='<div class="flex gap1">';
+    if(isAdmin()||entry.manager===_curMgr()){
+      h+='<button class="btn btn-o btn-sm" onclick="editSuivi(\''+entry.id+'\')">Modifier</button>';
+      h+='<button class="btn btn-r btn-sm" onclick="deleteSuivi(\''+entry.id+'\')">Supprimer</button>';
+    }
+    h+='</div></div>';
+
+    if(entry.type==='commentaire'){
+      h+='<div class="fs12" style="background:var(--gp);padding:10px;border-radius:var(--r)">'+( content.texte||'')+'</div>';
+      if(content.priorite)h+='<div class="mt1"><span class="badge '+(content.priorite==='haute'?'lv-crit':content.priorite==='moyenne'?'lv-moy':'lv-bon')+'">'+content.priorite+'</span></div>';
+    }else if(entry.type==='point_mensuel'){
+      // Performance
+      if(content.resultats||content.points_forts||content.difficultes){
+        h+='<div class="sep">Performance</div>';
+        if(content.resultats)h+='<div class="mb1"><span class="fs10 bold mu">Resultats : </span><span class="fs12">'+content.resultats+'</span></div>';
+        if(content.points_forts)h+='<div class="mb1"><span class="fs10 bold mu">Points forts : </span><span class="fs12">'+content.points_forts+'</span></div>';
+        if(content.difficultes)h+='<div class="mb1"><span class="fs10 bold mu">Difficultes : </span><span class="fs12">'+content.difficultes+'</span></div>';
+      }
+      // Formation
+      if(content.qualite_drills||content.qualite_ecoutes||content.progression||content.axes_travail){
+        h+='<div class="sep">Formation</div>';
+        if(content.qualite_drills)h+='<div class="mb1"><span class="fs10 bold mu">Drills : </span><span class="fs12">'+content.qualite_drills+'</span></div>';
+        if(content.qualite_ecoutes)h+='<div class="mb1"><span class="fs10 bold mu">Ecoutes : </span><span class="fs12">'+content.qualite_ecoutes+'</span></div>';
+        if(content.progression)h+='<div class="mb1"><span class="fs10 bold mu">Progression : </span><span class="fs12">'+content.progression+'</span></div>';
+        if(content.axes_travail)h+='<div class="mb1"><span class="fs10 bold mu">Axes : </span><span class="fs12">'+content.axes_travail+'</span></div>';
+      }
+      // Comportement
+      if(content.posture||content.etat_esprit||content.receptivite||content.autonomie){
+        h+='<div class="sep">Comportement</div>';
+        if(content.posture)h+='<div class="mb1"><span class="fs10 bold mu">Posture : </span><span class="fs12">'+content.posture+'</span></div>';
+        if(content.etat_esprit)h+='<div class="mb1"><span class="fs10 bold mu">Etat d\'esprit : </span><span class="fs12">'+content.etat_esprit+'</span></div>';
+        if(content.receptivite)h+='<div class="mb1"><span class="fs10 bold mu">Receptivite : </span><span class="fs12">'+content.receptivite+'</span></div>';
+        if(content.autonomie)h+='<div class="mb1"><span class="fs10 bold mu">Autonomie : </span><span class="fs12">'+content.autonomie+'</span></div>';
+      }
+      // Plan d'action
+      if(content.priorites||content.actions||content.accompagnement){
+        h+='<div class="sep">Plan d\'action</div>';
+        if(content.priorites)h+='<div class="mb1"><span class="fs10 bold mu">Priorites : </span><span class="fs12">'+content.priorites+'</span></div>';
+        if(content.actions)h+='<div class="mb1"><span class="fs10 bold mu">Actions : </span><span class="fs12">'+content.actions+'</span></div>';
+        if(content.accompagnement)h+='<div class="mb1"><span class="fs10 bold mu">Accompagnement : </span><span class="fs12">'+content.accompagnement+'</span></div>';
+      }
+      // Conclusion
+      if(content.retour_manager||content.niveau_confiance){
+        h+='<div class="sep">Conclusion</div>';
+        if(content.retour_manager)h+='<div class="mb1 fs12">'+content.retour_manager+'</div>';
+        if(content.niveau_confiance){
+          var nc=content.niveau_confiance;
+          var ncCls=niveauCls[nc]||'al-info';
+          h+='<div class="al '+ncCls+'" style="margin-top:6px">Niveau de confiance : <strong>'+nc+'</strong></div>';
+        }
+      }
+    }
+    h+='</div>';
+  });
+  h+='</div>';
+
+  // Right: stats sidebar
+  var pmEntries=entries.filter(function(e){return e.type==='point_mensuel';});
+  if(pmEntries.length){
+    h+='<div style="width:220px;flex-shrink:0">';
+    h+='<div class="card mb2"><div class="card-title">Niveaux de confiance</div>';
+    var niveaux={};
+    pmEntries.forEach(function(e){var n=(e.content||{}).niveau_confiance;if(n)niveaux[n]=(niveaux[n]||0)+1;});
+    var nOrder=['Tres satisfaisant','Satisfaisant','A surveiller','Prioritaire'];
+    nOrder.forEach(function(n){
+      if(niveaux[n]){
+        var cls=niveauCls[n]||'lv-bon';
+        h+='<div class="flex ac gap2 mb1"><span class="badge '+cls+'" style="min-width:100px">'+n+'</span><span class="fs11 bold">x'+niveaux[n]+'</span></div>';
+      }
+    });
+    h+='</div>';
+    h+='<div class="card"><div class="card-title">Axes recurrents</div>';
+    var axes={};
+    pmEntries.forEach(function(e){
+      var a=(e.content||{}).axes_travail;
+      if(a)a.split(/[,.\n]/).forEach(function(t){t=t.trim();if(t.length>3)axes[t]=(axes[t]||0)+1;});
+    });
+    var topAxes=Object.keys(axes).sort(function(a,b){return axes[b]-axes[a];}).slice(0,5);
+    if(topAxes.length)topAxes.forEach(function(a){h+='<div class="fs11 mb1" style="padding:3px 6px;background:var(--gp);border-radius:4px">'+a+'</div>';});
+    else h+='<div class="fs12 mu">Pas encore de donnees.</div>';
+    h+='</div></div>';
+  }
+  h+='</div>';
+  el.innerHTML=h;
+}
+
+function openSuiviModal(type,cid,entryId){
+  var c=_st.conseillers.find(function(x){return x.id===cid;});if(!c)return;
+  var titles={point_mensuel:'Point mensuel',commentaire:'Commentaire libre'};
+  var existing=entryId?(_st.suivi||[]).find(function(x){return x.id===entryId;}):null;
+  var content=existing?existing.content:{};
+  var h='<div class="modal-title">'+(titles[type]||type)+' -- '+c.name+'</div>';
+  h+='<input type="hidden" id="sm-cons-id" value="'+cid+'">';
+  h+='<input type="hidden" id="sm-type" value="'+type+'">';
+  h+='<input type="hidden" id="sm-entry-id" value="'+(entryId||'')+'">';
+
+  if(type==='commentaire'){
+    h+='<div class="mb2"><label class="lbl">Commentaire</label><textarea id="sm-texte" rows="5" style="width:100%;resize:vertical" placeholder="Observations, notes...">'+(content.texte||'')+'</textarea></div>';
+    h+='<div class="mb3"><label class="lbl">Priorite</label><select id="sm-priorite" style="width:100%">';
+    ['normale','moyenne','haute'].forEach(function(p){h+='<option value="'+p+'"'+(content.priorite===p?' selected':'')+'>'+p+'</option>';});
+    h+='</select></div>';
+  }else if(type==='point_mensuel'){
+    var today=new Date();
+    var defaultMois=today.getFullYear()+'-'+(String(today.getMonth()+1).padStart(2,'0'));
+    h+='<div class="mb2"><label class="lbl">Mois</label><input type="month" id="sm-mois" value="'+(existing?existing.mois||defaultMois:defaultMois)+'" style="width:100%"></div>';
+    var sections=[
+      {title:'Performance',fields:[
+        {id:'resultats',lbl:'Resultats du mois',rows:2},
+        {id:'points_forts',lbl:'Points forts observes',rows:2},
+        {id:'difficultes',lbl:'Difficultes rencontrees',rows:2}
+      ]},
+      {title:'Activite',fields:[
+        {id:'implication',lbl:'Implication & assiduité',rows:2},
+        {id:'process',lbl:'Respect des process',rows:2}
+      ]},
+      {title:'Formation',fields:[
+        {id:'qualite_drills',lbl:'Qualite des drills',rows:2},
+        {id:'qualite_ecoutes',lbl:'Qualite des ecoutes',rows:2},
+        {id:'progression',lbl:'Progression observee',rows:2},
+        {id:'axes_travail',lbl:'Axes de travail',rows:2}
+      ]},
+      {title:'Comportement',fields:[
+        {id:'posture',lbl:'Posture professionnelle',rows:2},
+        {id:'etat_esprit',lbl:'Etat d\'esprit',rows:2},
+        {id:'receptivite',lbl:'Receptivite au coaching',rows:2},
+        {id:'autonomie',lbl:'Autonomie',rows:2}
+      ]},
+      {title:'Plan d\'action',fields:[
+        {id:'priorites',lbl:'Priorites du mois suivant',rows:2},
+        {id:'actions',lbl:'Actions a mettre en place',rows:2},
+        {id:'accompagnement',lbl:'Accompagnement necessaire',rows:2}
+      ]},
+      {title:'Conclusion',fields:[
+        {id:'retour_manager',lbl:'Retour du manager',rows:3}
+      ]}
+    ];
+    sections.forEach(function(sec){
+      h+='<div style="font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--g);font-weight:700;margin:14px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--gl)">'+sec.title+'</div>';
+      sec.fields.forEach(function(f){
+        h+='<div class="mb2"><label class="lbl">'+f.lbl+'</label><textarea id="sm-'+f.id+'" rows="'+f.rows+'" style="width:100%;resize:vertical">'+(content[f.id]||'')+'</textarea></div>';
+      });
+    });
+    h+='<div class="mb3"><label class="lbl">Niveau de confiance</label><select id="sm-niveau" style="width:100%">';
+    ['','Tres satisfaisant','Satisfaisant','A surveiller','Prioritaire'].forEach(function(n){h+='<option value="'+n+'"'+(content.niveau_confiance===n?' selected':'')+'>'+n+'</option>';});
+    h+='</select></div>';
+  }
+  h+='<div class="flex gap2"><button class="btn btn-g f1" style="justify-content:center" onclick="saveSuivi()">Enregistrer</button><button class="btn btn-o" onclick="closeModal(\'mod-suivi\')">Annuler</button></div>';
+  document.getElementById('mod-suivi-body').innerHTML=h;
+  document.getElementById('mod-suivi').classList.remove('hidden');
+}
+
+async function saveSuivi(){
+  var cid=document.getElementById('sm-cons-id').value;
+  var type=document.getElementById('sm-type').value;
+  var eid=document.getElementById('sm-entry-id').value;
+  var content={};
+  var mois=null;
+  if(type==='commentaire'){
+    content.texte=document.getElementById('sm-texte').value.trim();
+    content.priorite=document.getElementById('sm-priorite').value;
+  }else if(type==='point_mensuel'){
+    var moisEl=document.getElementById('sm-mois');if(moisEl)mois=moisEl.value;
+    var fields=['resultats','points_forts','difficultes','implication','process','qualite_drills','qualite_ecoutes','progression','axes_travail','posture','etat_esprit','receptivite','autonomie','priorites','actions','accompagnement','retour_manager'];
+    fields.forEach(function(f){var el=document.getElementById('sm-'+f);if(el)content[f]=el.value.trim();});
+    var niv=document.getElementById('sm-niveau');if(niv&&niv.value)content.niveau_confiance=niv.value;
+  }
+  var payload={cons_id:cid,type:type,mois:mois,manager:_curMgr(),content:content,updated_at:new Date().toISOString()};
+  var res=eid?await _sb.from('suivi_managerial').update(payload).eq('id',eid):await _sb.from('suivi_managerial').insert(payload);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  closeModal('mod-suivi');await sbLoad();
+  openSuiviManagerial(cid);toast('Enregistre',true);
+}
+
+async function deleteSuivi(id){
+  if(!confirm('Supprimer cette entree ?'))return;
+  var entry=(_st.suivi||[]).find(function(x){return x.id===id;});
+  var res=await _sb.from('suivi_managerial').delete().eq('id',id);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();if(entry)openSuiviManagerial(entry.cons_id);toast('Supprime',true);
+}
+
+async function editSuivi(id){
+  var entry=(_st.suivi||[]).find(function(x){return x.id===id;});if(!entry)return;
+  openSuiviModal(entry.type,entry.cons_id,id);
+}
+
+// ══ PLANNING IN FICHE CONSEILLER ══
+function renderFichePlanning(cid){
+  var el=document.getElementById('fiche-planning-content');if(!el)return;
+  var items=(_st.planning||[]).filter(function(p){return p.cons_id===cid;});
+  var today=new Date().toISOString().split('T')[0];
+  if(!items.length){
+    el.innerHTML='<div class="card" style="text-align:center;padding:20px;color:var(--mu)">Aucune evaluation planifiee.</div>';
+    return;
+  }
+  var upcoming=items.filter(function(p){return p.planned_date>=today;}).sort(function(a,b){return a.planned_date.localeCompare(b.planned_date);});
+  var past=items.filter(function(p){return p.planned_date<today;}).sort(function(a,b){return b.planned_date.localeCompare(a.planned_date);});
+  var h='';
+  if(upcoming.length){
+    h+='<div class="card mb2"><div class="card-title">A venir</div>';
+    h+=upcoming.map(function(item){
+      var sc2=item.status==='realise'?'var(--tb)':item.status==='reporte'?'var(--moy)':'var(--bon)';
+      var sl=item.status==='realise'?'Fait':item.status==='reporte'?'Reporte':'A faire';
+      return'<div class="rdv-pill" style="cursor:pointer" onclick="openPlanningItemEval(\''+item.id+'\')">'+
+        '<div><span class="fs12 bold">'+item.eval_type+'</span> <span class="fs11 mu">'+( DB.rdv()[item.rdv]?DB.rdv()[item.rdv].label:item.rdv)+'</span></div>'+
+        '<div class="flex ac gap2"><span class="fs11 mu">'+fd(item.planned_date)+'</span>'+
+        '<span style="background:'+sc2+';color:#fff;border-radius:3px;padding:1px 6px;font-size:9px;font-weight:700">'+sl+'</span>'+
+        (item.priority==='haute'?'<span style="color:var(--crit);font-weight:700">!</span>':'')+'</div></div>';
+    }).join('');
+    h+='</div>';
+  }
+  if(past.length){
+    h+='<div class="card"><div class="card-title">Historique</div>';
+    h+=past.slice(0,5).map(function(item){
+      var sc2=item.status==='realise'?'var(--tb)':'var(--crit)';
+      var sl=item.status==='realise'?'Fait':'Non realise';
+      return'<div class="rdv-pill">'+
+        '<div><span class="fs12">'+item.eval_type+'</span> <span class="fs11 mu">'+( DB.rdv()[item.rdv]?DB.rdv()[item.rdv].label:item.rdv)+'</span></div>'+
+        '<div class="flex ac gap2"><span class="fs11 mu">'+fd(item.planned_date)+'</span>'+
+        '<span style="background:'+sc2+';color:#fff;border-radius:3px;padding:1px 6px;font-size:9px;font-weight:700">'+sl+'</span></div></div>';
+    }).join('');
+    h+='</div>';
+  }
+  el.innerHTML=h;
+}
+
 </script>
-</body>
-</html>
+UGGESTIONS ══
+function openSuggestObjModal(rdv){
+  document.getElementById('sug-rdv').value=rdv;
+  document.getElementById('sug-text').value='';
+  document.getElementById('mod-suggest').classList.remove('hidden');
+}
 
+async function saveSuggestion(){
+  var rdv=document.getElementById('sug-rdv').value;
+  var text=document.getElementById('sug-text').value.trim();
+  if(!text)return;
+  var res=await _sb.from('objections_suggestions').insert({rdv_type:rdv,text:text,suggested_by:_curMgr(),status:'pending'});
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  closeModal('mod-suggest');await sbLoad();toast('Suggestion envoyee a l\'admin',true);
+}
 
+function renderSuggestions(){
+  if(!isAdmin()){document.getElementById('stab-suggestions').innerHTML='<div class="al al-warn">Acces reserve a l\'administrateur.</div>';return;}
+  var pending=(_st.suggestions||[]).filter(function(s){return s.status==='pending';});
+  if(!pending.length){document.getElementById('stab-suggestions').innerHTML='<div class="al al-ok">Aucune suggestion en attente.</div>';return;}
+  document.getElementById('stab-suggestions').innerHTML=pending.map(function(s){
+    return'<div class="card mb2"><div class="flex jb ac">'
+      +'<div><div class="fs12 bold">'+s.text+'</div><div class="fs11 mu">Type: '+s.rdv_type+' — par '+s.suggested_by+'</div></div>'
+      +'<div class="flex gap1">'
+      +'<button class="btn btn-g btn-sm" onclick="approveSuggestion(\''+s.id+'\')">Valider</button>'
+      +'<button class="btn btn-r btn-sm" onclick="rejectSuggestion(\''+s.id+'\')">Refuser</button>'
+      +'</div></div></div>';
+  }).join('');
+}
 
-<!-- MODAL PLANNING -->
-<div id="mod-planning" class="modal-bg hidden">
-  <div class="modal" style="width:520px">
-    <div id="mod-planning-body"></div>
-  </div>
-</div>
+async function approveSuggestion(id){
+  var s=(_st.suggestions||[]).find(function(x){return x.id===id;});if(!s)return;
+  var o=getObjs();if(!o[s.rdv_type])o[s.rdv_type]=[];
+  if(!o[s.rdv_type].includes(s.text))o[s.rdv_type].push(s.text);
+  await saveObjs(o);
+  await _sb.from('objections_suggestions').update({status:'approved'}).eq('id',id);
+  await sbLoad();renderSuggestions();toast('Objection validee et ajoutee',true);
+}
 
+async function rejectSuggestion(id){
+  await _sb.from('objections_suggestions').update({status:'rejected'}).eq('id',id);
+  await sbLoad();renderSuggestions();toast('Suggestion refusee',true);
+}
+async function deletePlannedEval(eid){
+  if(!confirm('Supprimer cette evaluation planifiee ?'))return;
+  await _sb.from('evaluations').delete().eq('id',eid);
+  await sbLoad();renderPlanning();
+}
+
+function renderPlanning(){
+  var el=document.getElementById('p-planning');if(!el)return;
+  var now=new Date();
+  // Get start of week + offset
+  var day=now.getDay();var diff=day===0?-6:1-day;
+  var weekStart=new Date(now);weekStart.setDate(now.getDate()+diff+(_planningWeek*7));weekStart.setHours(0,0,0,0);
+  var weekEnd=new Date(weekStart);weekEnd.setDate(weekStart.getDate()+6);weekEnd.setHours(23,59,59,999);
+  var fmt=function(d){return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});};
+  var days=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+
+  // Get planned evals for this week
+  var myC=myConseillers().map(function(c){return c.id;});
+  var weekEvs=_st.evals.filter(function(e){
+    if(!e.planned)return false;
+    if(!myC.includes(e.cons_id)&&!isAdmin())return false;
+    var d=new Date(e.eval_date);
+    return d>=weekStart&&d<=weekEnd;
+  });
+
+  // Count overdue planned
+  var overdue=_st.evals.filter(function(e){
+    if(!e.planned||e.planned_status==='realise')return false;
+    if(!myC.includes(e.cons_id)&&!isAdmin())return false;
+    return new Date(e.eval_date)<now;
+  }).length;
+
+  var h='<div class="flex jb ac mb3">'
+    +'<div><div style="font-size:20px;font-weight:700;color:var(--n)">Planning des evaluations</div>'
+    +'<div class="fs12 mu mt1">Semaine du '+fmt(weekStart)+' au '+fmt(weekEnd)+'</div></div>'
+    +'<div class="flex gap2 ac">'
+    +(overdue>0?'<span style="background:var(--crit-bg);color:var(--crit);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:700">'+overdue+' en retard</span>':'')
+    +'<button class="btn btn-o btn-sm" onclick="_planningWeek--;renderPlanning()">&#8592; Semaine precedente</button>'
+    +'<button class="btn btn-o btn-sm" onclick="_planningWeek=0;renderPlanning()">Aujourd\'hui</button>'
+    +'<button class="btn btn-o btn-sm" onclick="_planningWeek++;renderPlanning()">Semaine suivante &#8594;</button>'
+    +'<button class="btn btn-g btn-sm" onclick="openPlanModal()">+ Planifier</button>'
+    +'</div></div>';
+
+  // Week grid
+  h+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px">';
+  for(var i=0;i<7;i++){
+    var dayDate=new Date(weekStart);dayDate.setDate(weekStart.getDate()+i);
+    var dayStr=dayDate.toISOString().split('T')[0];
+    var isToday=dayStr===now.toISOString().split('T')[0];
+    var dayEvs=weekEvs.filter(function(e){return e.eval_date===dayStr;});
+    h+='<div style="border-radius:var(--rl);border:1px solid '+(isToday?'var(--g)':'var(--bd)')+';background:'+(isToday?'var(--gp)':'var(--w)')+';min-height:120px">'
+      +'<div style="padding:8px 10px;border-bottom:1px solid var(--bd);background:'+(isToday?'var(--g)':'var(--ow)')+';border-radius:var(--rl) var(--rl) 0 0">'
+      +'<div style="font-size:11px;font-weight:700;color:'+(isToday?'var(--n)':'var(--mu)')+'">'+days[i]+'</div>'
+      +'<div style="font-size:10px;color:'+(isToday?'var(--n)':'var(--mu)')+'">'+fmt(dayDate)+'</div></div>'
+      +'<div style="padding:6px">'
+      +dayEvs.map(function(e){
+        var c=_st.conseillers.find(function(x){return x.id===e.cons_id;})||{name:'?'};
+        var isLate=new Date(e.eval_date)<now&&e.planned_status!=='realise';
+        var statusColor=e.planned_status==='realise'?'var(--tb)':isLate?'var(--crit)':'var(--bon)';
+        var statusLabel=e.planned_status==='realise'?'Realise':isLate?'En retard':'A faire';
+        var prioColor=e.planned_priority==='haute'?'var(--crit)':e.planned_priority==='moyenne'?'var(--moy)':'var(--mu)';
+        return'<div style="background:var(--n);border-radius:var(--r);padding:6px 8px;margin-bottom:4px;border-left:3px solid '+statusColor+'">'
+          +'<div style="font-size:11px;font-weight:600;color:#fff">'+c.name+'</div>'
+          +'<div style="font-size:10px;color:var(--mu)">'+DB.rdv()[e.rdv].label+'</div>'
+          +'<div class="flex ac gap1 mt1">'
+          +(e.eval_type?'<span style="background:var(--bon-bg);color:var(--bon);border-radius:3px;padding:1px 5px;font-size:9px">'+e.eval_type+'</span>':'')
+          +'<span style="background:'+statusColor+'20;color:'+statusColor+';border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700">'+statusLabel+'</span>'
+          +(e.planned_priority?'<span style="font-size:9px;color:'+prioColor+'">'+e.planned_priority+'</span>':'')
+          +'</div>'
+          +'<div class="flex gap1 mt1">'
+          +(e.planned_status!=='realise'?'<button style="font-size:9px;padding:2px 6px;background:var(--tb);color:#fff;border:none;border-radius:3px;cursor:pointer" onclick="completePlannedEval(\''+e.id+'\')">Evaluer</button>':'')
+          +'<button style="font-size:9px;padding:2px 6px;background:var(--crit-bg);color:var(--crit);border:none;border-radius:3px;cursor:pointer" onclick="deletePlannedEval(\''+e.id+'\')">X</button>'
+          +'</div></div>';
+      }).join('')
+      +'</div></div>';
+  }
+  h+='</div>';
+
+  // Overdue list
+  var overdueEvs=_st.evals.filter(function(e){
+    if(!e.planned||e.planned_status==='realise')return false;
+    if(!myC.includes(e.cons_id)&&!isAdmin())return false;
+    return new Date(e.eval_date)<weekStart;
+  });
+  if(overdueEvs.length){
+    h+='<div class="card mt3"><div class="card-title" style="color:var(--crit)">Evaluations en retard</div>'
+      +overdueEvs.map(function(e){
+        var c=_st.conseillers.find(function(x){return x.id===e.cons_id;})||{name:'?'};
+        return'<div class="flex ac gap2" style="padding:8px 0;border-bottom:1px solid var(--bd)">'
+          +'<div class="ava" style="width:28px;height:28px;font-size:10px;background:var(--crit)">'+ini(c.name)+'</div>'
+          +'<div class="f1"><div class="fs12 bold">'+c.name+'</div><div class="fs11 mu">'+DB.rdv()[e.rdv].label+(e.eval_type?' ['+e.eval_type+']':'')+'</div></div>'
+          +'<span class="fs11 mu">Prevu le '+fd(e.eval_date)+'</span>'
+          +'<button class="btn btn-g btn-sm" style="padding:4px 9px;font-size:10px" onclick="completePlannedEval(\''+e.id+'\')">Evaluer</button>'
+          +'<button class="btn btn-r btn-sm" style="padding:4px 9px;font-size:10px" onclick="deletePlannedEval(\''+e.id+'\')">X</button>'
+          +'</div>';
+      }).join('')+'</div>';
+  }
+  el.innerHTML=h;
+}
+
+function openPlanModal(){
+  var myCons=myConseillers();
+  var mgrs=isAdmin()?Object.keys(USERS):[_curMgr()];
+  document.getElementById('plan-cons').innerHTML=myCons.map(function(c){return'<option value="'+c.id+'">'+c.name+'</option>';}).join('');
+  document.getElementById('plan-mgr').innerHTML=mgrs.map(function(n){return'<option value="'+n+'"'+(n===_curMgr()?' selected':'')+'>'+n+'</option>';}).join('');
+  document.getElementById('plan-date').value=new Date().toISOString().split('T')[0];
+  document.getElementById('mod-plan').classList.remove('hidden');
+}
+
+// ══ MODULE ANALYSE IA ══
+var ANTHROPIC_KEY='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';
+
+function initAnalyse(){
+  var myCons=myConseillers();
+  var sel=document.getElementById('an-cons');
+  if(sel)sel.innerHTML=myCons.map(function(c){return'<option value="'+c.id+'">'+c.name+'</option>';}).join('');
+  var dateEl=document.getElementById('an-date');
+  if(dateEl)dateEl.value=new Date().toISOString().split('T')[0];
+}
+async function analyzeTranscript(){
+  var consId=document.getElementById('an-cons').value;
+  var rdv=document.getElementById('an-rdv').value;
+  var text=document.getElementById('an-text').value.trim();
+  if(!consId||!text){alert('Selectionnez un conseiller et collez la retranscription.');return;}
+  var cons=_st.conseillers.find(function(x){return x.id===consId;});
+  if(!cons)return;
+  var blocs=getBlocs()[rdv];
+  if(!blocs)return;
+
+  document.getElementById('an-result').innerHTML='<div class="loading"><div class="spinner"></div>Analyse en cours par Claude...</div>';
+  document.getElementById('an-result').style.display='block';
+  document.getElementById('an-submit').disabled=true;
+
+  var blocsList='';
+  ['tech','com','pro'].forEach(function(dim){
+    var dlbl={'tech':'Technique','com':'Commercial','pro':'Professionnalisme'}[dim];
+    blocsList+='\n'+dlbl+':\n'+blocs[dim].map(function(b,i){return'  '+(i+1)+'. '+b;}).join('\n');
+  });
+
+  var prompt='Tu es un expert en formation commerciale pour un cabinet de gestion de patrimoine (Stellar Invest).\n\n'
+    +'Analyse cette retranscription d\'un rendez-vous de type "'+blocs.label+'" realise par '+cons.name+'.\n\n'
+    +'BLOCS D\'EVALUATION ATTENDUS POUR CE TYPE DE RDV:\n'+blocsList+'\n\n'
+    +'RETRANSCRIPTION DU RENDEZ-VOUS:\n'+text+'\n\n'
+    +'Reponds UNIQUEMENT en JSON valide avec cette structure exacte:\n'
+    +'{\n'
+    +'"synthese": "synthese globale en 3-4 phrases",\n'
+    +'"points_forts": ["point 1", "point 2", "point 3"],\n'
+    +'"points_faibles": ["point 1", "point 2", "point 3"],\n'
+    +'"oublis": ["element oublie 1", "element oublie 2"],\n'
+    +'"score_tech": 72,\n'
+    +'"score_com": 68,\n'
+    +'"score_pro": 75,\n'
+    +'"qualite_commerciale": "evaluation en 2-3 phrases",\n'
+    +'"qualite_technique": "evaluation en 2-3 phrases",\n'
+    +'"professionnalisme": "evaluation en 2-3 phrases",\n'
+    +'"objections_detectees": ["objection 1", "objection 2"],\n'
+    +'"qualite_reponses_objections": "evaluation en 2-3 phrases",\n'
+    +'"recommandations": ["recommandation 1", "recommandation 2", "recommandation 3"],\n'
+    +'"appreciation_globale": "appreciation en 1 phrase"\n'
+    +'}';
+
+  try{
+    var resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,messages:[{role:'user',content:prompt}]})
+    });
+    var data=await resp.json();
+    if(data.error){throw new Error(data.error.message);}
+    var raw=data.content[0].text.trim();
+    // Extract JSON
+    var jsonMatch=raw.match(/\{[\s\S]*\}/);
+    if(!jsonMatch)throw new Error('Reponse invalide');
+    var analysis=JSON.parse(jsonMatch[0]);
+    displayAnalysis(analysis,consId,rdv,cons.name,blocs.label);
+  }catch(e){
+    document.getElementById('an-result').innerHTML='<div class="al al-crit">Erreur analyse: '+e.message+'</div>';
+    document.getElementById('an-submit').disabled=false;
+  }
+}
+
+var _currentAnalysis=null;
+
+function displayAnalysis(a,consId,rdv,consName,rdvLabel){
+  _currentAnalysis={analysis:a,consId:consId,rdv:rdv};
+  var g=Math.round(a.score_tech*0.35+a.score_com*0.40+a.score_pro*0.25);
+  var l=lv(g);
+  var h='<div style="border:2px solid var(--g);border-radius:var(--rl);padding:20px;margin-top:16px">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--bd)">';
+  h+='<div><div style="font-size:16px;font-weight:700;color:var(--n)">Analyse IA — '+consName+'</div>';
+  h+='<div class="fs12 mu">'+rdvLabel+' — par Claude AI</div></div>';
+  h+='<div style="text-align:center"><strong style="font-size:36px;color:'+l.c+'">'+g+'</strong><div class="fs11 mu">/100</div><span class="badge '+l.cls+'">'+l.lbl+'</span></div></div>';
+  // Scores
+  h+='<div class="g3 mb2" style="gap:10px">';
+  h+='<div style="text-align:center;padding:12px;background:'+sc(a.score_tech)+'18;border-radius:var(--r)"><div class="fs11 mu">Technique</div>';
+  h+='<input type="number" id="adj-tech" value="'+a.score_tech+'" min="0" max="100" style="font-size:22px;font-weight:700;color:'+sc(a.score_tech)+';width:70px;border:none;background:transparent;text-align:center" oninput="updateAdjScore()"></div>';
+  h+='<div style="text-align:center;padding:12px;background:'+sc(a.score_com)+'18;border-radius:var(--r)"><div class="fs11 mu">Commercial</div>';
+  h+='<input type="number" id="adj-com" value="'+a.score_com+'" min="0" max="100" style="font-size:22px;font-weight:700;color:'+sc(a.score_com)+';width:70px;border:none;background:transparent;text-align:center" oninput="updateAdjScore()"></div>';
+  h+='<div style="text-align:center;padding:12px;background:'+sc(a.score_pro)+'18;border-radius:var(--r)"><div class="fs11 mu">Professionnalisme</div>';
+  h+='<input type="number" id="adj-pro" value="'+a.score_pro+'" min="0" max="100" style="font-size:22px;font-weight:700;color:'+sc(a.score_pro)+';width:70px;border:none;background:transparent;text-align:center" oninput="updateAdjScore()"></div>';
+  h+='</div>';
+  h+='<div id="adj-global-badge" style="text-align:center;margin-bottom:16px"><span class="badge '+l.cls+'" style="font-size:13px;padding:4px 16px" id="adj-global-lbl">Score ajuste : '+g+'</span></div>';
+  // Synthese
+  h+='<div class="sep">Synthese globale</div><div class="fs12" style="background:var(--gp);padding:12px;border-radius:var(--r);margin-bottom:12px">'+a.synthese+'</div>';
+  h+='<div class="sep">Appreciation</div><div class="fs12 mu" style="padding:8px 0">'+a.appreciation_globale+'</div>';
+  // Points forts / faibles
+  h+='<div class="g2 mb2" style="gap:12px">';
+  h+='<div><div class="sep">Points forts</div>'+a.points_forts.map(function(p){return'<div class="al al-ok" style="margin-bottom:4px">+ '+p+'</div>';}).join('')+'</div>';
+  h+='<div><div class="sep">Points faibles</div>'+a.points_faibles.map(function(p){return'<div class="al al-warn" style="margin-bottom:4px">- '+p+'</div>';}).join('')+'</div>';
+  h+='</div>';
+  // Oublis
+  if(a.oublis&&a.oublis.length){
+    h+='<div class="sep">Elements oublies ou imprecis</div>';
+    h+=a.oublis.map(function(o){return'<div class="al al-crit" style="margin-bottom:4px">! '+o+'</div>';}).join('');
+  }
+  // Qualites
+  h+='<div class="g3 mb2" style="gap:10px;margin-top:12px">';
+  h+='<div class="card"><div class="card-title">Commercial</div><div class="fs12">'+a.qualite_commerciale+'</div></div>';
+  h+='<div class="card"><div class="card-title">Technique</div><div class="fs12">'+a.qualite_technique+'</div></div>';
+  h+='<div class="card"><div class="card-title">Professionnalisme</div><div class="fs12">'+a.professionnalisme+'</div></div>';
+  h+='</div>';
+  // Objections
+  if(a.objections_detectees&&a.objections_detectees.length){
+    h+='<div class="sep">Objections detectees</div>';
+    h+=a.objections_detectees.map(function(o){return'<span style="display:inline-block;background:var(--nm);color:#fff;border-radius:20px;padding:3px 10px;font-size:11px;margin:2px">'+o+'</span>';}).join(' ');
+    h+='<div class="fs12 mu" style="margin-top:8px">'+a.qualite_reponses_objections+'</div>';
+  }
+  // Recommandations
+  h+='<div class="sep">Recommandations</div>';
+  h+=a.recommandations.map(function(r,i){return'<div class="drill-card"><div class="drill-title">Recommandation '+(i+1)+'</div><div class="drill-body">'+r+'</div></div>';}).join('');
+  // Actions
+  h+='<div class="flex gap2 mt3">';
+  h+='<button class="btn btn-g f1" style="justify-content:center" onclick="saveAnalysis()">Enregistrer dans la fiche conseiller</button>';
+  h+='<button class="btn btn-o" onclick="document.getElementById(\'an-result\').style.display=\'none\';document.getElementById(\'an-submit\').disabled=false;">Annuler</button>';
+  h+='</div></div>';
+  document.getElementById('an-result').innerHTML=h;
+  document.getElementById('an-submit').disabled=false;
+}
+
+function updateAdjScore(){
+  var t=parseInt(document.getElementById('adj-tech').value)||0;
+  var c=parseInt(document.getElementById('adj-com').value)||0;
+  var p=parseInt(document.getElementById('adj-pro').value)||0;
+  var g=Math.round(t*0.35+c*0.40+p*0.25);
+  var l=lv(g);
+  var badge=document.getElementById('adj-global-lbl');
+  if(badge){badge.textContent='Score ajuste : '+g;badge.className='badge '+l.cls;}
+}
+
+async function saveAnalysis(){
+  if(!_currentAnalysis)return;
+  var t=parseInt(document.getElementById('adj-tech').value)||_currentAnalysis.analysis.score_tech;
+  var c=parseInt(document.getElementById('adj-com').value)||_currentAnalysis.analysis.score_com;
+  var p=parseInt(document.getElementById('adj-pro').value)||_currentAnalysis.analysis.score_pro;
+  var g=Math.round(t*0.35+c*0.40+p*0.25);
+  var today=new Date().toISOString().split('T')[0];
+  var payload={
+    cons_id:_currentAnalysis.consId,
+    rdv:_currentAnalysis.rdv,
+    eval_type:'Analyse RDV',
+    source:'ia',
+    manager:_curMgr()||'Manager',
+    eval_date:today,
+    score_tech:t,score_com:c,score_pro:p,score_global:g,
+    blocs_tech:[],blocs_com:[],blocs_pro:[],objs:[],
+    synthese:_currentAnalysis.analysis.synthese,
+    ai_report:_currentAnalysis.analysis
+  };
+  var res=await _sb.from('evaluations').insert(payload);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();
+  toast('Analyse enregistree dans la fiche conseiller',true);
+  // Reset form
+  document.getElementById('an-text').value='';
+  document.getElementById('an-result').style.display='none';
+  _currentAnalysis=null;
+  go('equipe');
+}
+
+// ══ MODULE PLANNING ══
+async function savePlanningItem(){
+  var consId=document.getElementById('pl-cons').value;
+  var rdv=document.getElementById('pl-rdv').value;
+  var evalType=document.getElementById('pl-type').value;
+  var date=document.getElementById('pl-date').value;
+  var notes=document.getElementById('pl-notes').value.trim();
+  var priority=document.getElementById('pl-priority').value;
+  if(!consId||!date){alert('Conseiller et date obligatoires.');return;}
+  var payload={cons_id:consId,rdv:rdv,eval_type:evalType,planned_date:date,manager:_curMgr()||'Manager',notes:notes,priority:priority,status:'a_faire'};
+  var res=await _sb.from('planning').insert(payload);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();closeModal('mod-planning');renderWeekPlanning();
+  toast('Evaluation planifiee',true);
+}
+
+async function updatePlanningStatus(id,status){
+  await _sb.from('planning').update({status:status}).eq('id',id);
+  await sbLoad();renderWeekPlanning();
+}
+
+async function deletePlanningItem(id){
+  if(!confirm('Supprimer cette planification ?'))return;
+  await _sb.from('planning').delete().eq('id',id);
+  await sbLoad();renderWeekPlanning();
+}
+
+var _weekOffset=0;
+function getWeekDates(offset){
+  var now=new Date();
+  var day=now.getDay();
+  var diff=now.getDate()-day+(day===0?-6:1)+offset*7;
+  var monday=new Date(now.setDate(diff));
+  var days=[];
+  for(var i=0;i<7;i++){
+    var d=new Date(monday);d.setDate(monday.getDate()+i);
+    days.push(d);
+  }
+  return days;
+}
+
+function renderWeekPlanning(){
+  var el=document.getElementById('p-planning');if(!el)return;
+  var days=getWeekDates(_weekOffset);
+  var dayNames=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  var myItems=isAdmin()?_st.planning:_st.planning.filter(function(p){return p.manager===_curMgr();});
+  var today=new Date().toISOString().split('T')[0];
+  // Count late
+  var late=myItems.filter(function(p){return p.status==='a_faire'&&p.planned_date<today;}).length;
+  var h='<div class="flex jb ac mb3">';
+  h+='<div><div style="font-size:20px;font-weight:700;color:var(--n)">Planning de la semaine</div>';
+  h+='<div class="fs12 mu mt1">'+days[0].toLocaleDateString('fr-FR')+' — '+days[6].toLocaleDateString('fr-FR')+'</div></div>';
+  h+='<div class="flex gap2 ac">';
+  if(late>0)h+='<span style="background:var(--crit);color:#fff;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:700">'+late+' en retard</span>';
+  h+='<button class="btn btn-o btn-sm" onclick="_weekOffset--;renderWeekPlanning()">← Prev</button>';
+  h+='<button class="btn btn-o btn-sm" onclick="_weekOffset=0;renderWeekPlanning()">Aujourd\'hui</button>';
+  h+='<button class="btn btn-o btn-sm" onclick="_weekOffset++;renderWeekPlanning()">Suiv →</button>';
+  h+='<button class="btn btn-g btn-sm" onclick="openPlanningModal()">+ Planifier</button></div></div>';
+  // Week grid
+  h+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px">';
+  days.forEach(function(d,i){
+    var ds=d.toISOString().split('T')[0];
+    var isToday=ds===today;
+    var dayItems=myItems.filter(function(p){return p.planned_date===ds;});
+    h+='<div style="border:1px solid '+(isToday?'var(--g)':'var(--bd)')+';border-radius:var(--r);padding:8px;background:'+(isToday?'var(--gp)':'var(--w)')+';min-height:120px">';
+    h+='<div style="font-size:11px;font-weight:700;color:'+(isToday?'var(--g)':'var(--mu)')+';margin-bottom:6px">'+dayNames[i]+' '+d.getDate()+'</div>';
+    dayItems.forEach(function(item){
+      var cons=_st.conseillers.find(function(c){return c.id===item.cons_id;});
+      var isLate=item.status==='a_faire'&&ds<today;
+      var statusColor=item.status==='realise'?'var(--tb)':isLate?'var(--crit)':'var(--moy)';
+      var statusLabel=item.status==='realise'?'Fait':isLate?'Retard':'A faire';
+      h+='<div style="background:'+statusColor+'15;border:1px solid '+statusColor+'40;border-radius:5px;padding:5px;margin-bottom:4px;font-size:10px">';
+      h+='<div style="font-weight:700;color:var(--n)">'+(cons?cons.name:'?')+'</div>';
+      h+='<div style="color:var(--mu)">'+item.eval_type+' — '+DB.rdv()[item.rdv].label+'</div>';
+      h+='<div style="display:flex;align-items:center;gap:4px;margin-top:3px">';
+      h+='<span style="background:'+statusColor+';color:#fff;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700">'+statusLabel+'</span>';
+      if(item.priority==='haute')h+='<span style="color:var(--crit);font-weight:700">!</span>';
+      h+='</div>';
+      if(item.notes)h+='<div style="color:var(--mu);margin-top:2px;font-size:9px">'+item.notes+'</div>';
+      h+='<div style="display:flex;gap:3px;margin-top:4px">';
+      if(item.status!=='realise')h+='<button style="font-size:9px;padding:2px 5px;background:var(--tb);color:#fff;border:none;border-radius:3px;cursor:pointer" onclick="updatePlanningStatus(\''+item.id+'\',\'realise\')">Fait</button>';
+      h+='<button style="font-size:9px;padding:2px 5px;background:var(--crit-bg);color:var(--crit);border:1px solid var(--crit);border-radius:3px;cursor:pointer" onclick="deletePlanningItem(\''+item.id+'\')">X</button>';
+      h+='</div></div>';
+    });
+    h+='</div>';
+  });
+  h+='</div>';
+  el.innerHTML=h;
+}
+
+function openPlanningModal(){
+  var myCons=myConseillers();
+  var consSelect='<select id="pl-cons" style="width:100%">'+myCons.map(function(c){return'<option value="'+c.id+'">'+c.name+'</option>';}).join('')+'</select>';
+  var h='<div class="modal-title">Planifier une evaluation</div>';
+  h+='<div style="margin-bottom:12px"><label class="lbl">Conseiller</label>'+consSelect+'</div>';
+  h+='<div class="g2 gap2 mb2">';
+  h+='<div><label class="lbl">Type de RDV</label><select id="pl-rdv" style="width:100%"><option value="phoning">Phoning</option><option value="d0">D0 Etude</option><option value="d1scpi">D1 SCPI</option><option value="d1asset">D1 Asset</option><option value="d1pe">D1 PE</option><option value="d2">D2 Closing</option></select></div>';
+  h+='<div><label class="lbl">Type evaluation</label><select id="pl-type" style="width:100%"><option value="Drill">Drill</option><option value="Ecoute">Ecoute</option><option value="Oral">Oral de formation</option><option value="Analyse RDV">Analyse RDV</option></select></div>';
+  h+='</div>';
+  h+='<div class="g2 gap2 mb2">';
+  h+='<div><label class="lbl">Date prevue</label><input type="date" id="pl-date" style="width:100%"></div>';
+  h+='<div><label class="lbl">Priorite</label><select id="pl-priority" style="width:100%"><option value="normale">Normale</option><option value="haute">Haute</option></select></div>';
+  h+='</div>';
+  h+='<div style="margin-bottom:16px"><label class="lbl">Notes</label><input type="text" id="pl-notes" placeholder="Instructions, contexte..." style="width:100%"></div>';
+  h+='<div class="flex gap2"><button class="btn btn-g f1" style="justify-content:center" onclick="savePlanningItem()">Planifier</button><button class="btn btn-o" onclick="closeModal(\'mod-planning\')">Annuler</button></div>';
+  document.getElementById('mod-planning-body').innerHTML=h;
+  // Set default date to tomorrow
+  var tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);
+  document.getElementById('pl-date').value=tomorrow.toISOString().split('T')[0];
+  document.getElementById('mod-planning').classList.remove('hidden');
+}
+
+</script>
 </body>
 </html>
