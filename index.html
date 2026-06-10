@@ -1232,31 +1232,75 @@ function updateBloc(rdv,dim,i,v){var b=getBlocs();b[rdv][dim][i]=v;saveBlocs(b);
 async function removeBloc(rdv,dim,i){var b=getBlocs();b[rdv][dim].splice(i,1);await saveBlocs(b);renderBlocsEditor();}
 async function addBloc(rdv,dim){var b=getBlocs();b[rdv][dim].push('Nouveau bloc');await saveBlocs(b);renderBlocsEditor();}
 
+/*renderMgrSettings fixed*/
 function renderMgrSettings(){
-  if(!isAdmin()){document.getElementById('stab-managers').innerHTML='<div class="al al-warn">Acces reserve a l\'administrateur.</div>';return;}
-  var d=DB.get();
-  var allMgrs=[{name:ADMIN,team:[],isAdmin:true}].concat(d.managers.filter(function(m){return m.name!==ADMIN;}));
-  var html='<div class="g2" style="align-items:start;gap:12px"><div class="card"><div class="card-title">Managers & equipes</div><div class="fs11 mu mb2">Assignez les conseillers a chaque manager.</div>';
+  if(!isAdmin()){document.getElementById('stab-managers').innerHTML='<div class="al al-warn">Acces reserve a l&#39;administrateur.</div>';return;}
+  // Ensure ADMIN exists in _st.managers (upsert silently)
+  var adminInDb=_st.managers.find(function(m){return m.name===ADMIN;});
+  if(!adminInDb){_sb.from('managers').upsert({name:ADMIN,team:[]},{onConflict:'name'});}
+  // Full list from Supabase, admin first
+  var allMgrs=_st.managers.slice().sort(function(a,b){if(a.name===ADMIN)return -1;if(b.name===ADMIN)return 1;return a.name.localeCompare(b.name);});
+  if(!allMgrs.find(function(m){return m.name===ADMIN;}))allMgrs.unshift({name:ADMIN,team:[]});
+  var html='<div class="g2" style="align-items:start;gap:12px"><div class="card"><div class="card-title">Managers &amp; equipes</div><div class="fs11 mu mb2">Cochez les conseillers a assigner a chaque manager.</div>';
   html+=allMgrs.map(function(m){
-    var isA=m.name===ADMIN;var realMi=d.managers.findIndex(function(x){return x.name===m.name;});
+    var isA=m.name===ADMIN;
     return '<div style="padding:12px 0;border-bottom:1px solid var(--bd)">'
       +'<div class="flex ac gap2 mb2"><div class="mgr-dot" style="background:'+(isA?'var(--g)':'#2563EB')+'">'+m.name[0]+'</div>'
-      +'<strong class="f1">'+m.name+'</strong><span style="font-size:10px;color:var(--mu)">'+(isA?'Admin':'Manager')+'</span>'
+      +'<strong class="f1">'+m.name+'</strong><span style="font-size:10px;color:var(--mu)">'+(isA?'Administrateur':'Manager')+'</span>'
       +(!isA?'<button class="btn btn-r btn-sm" data-name="'+m.name+'" onclick="removeMgr(this.dataset.name)">Supprimer</button>':'')+'</div>'
-      +(!isA?'<div class="fs11 mu mb1">Conseillers :</div>'
-      +d.conseillers.map(function(c){var inT=m.team&&m.team.indexOf(c.id)>=0;return'<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin:3px 0"><input type="checkbox"'+(inT?' checked':'')+' style="width:13px;height:13px;margin:0;accent-color:var(--g)" data-mi="'+realMi+'" data-cid="'+c.id+'" onchange="toggleTeam(parseInt(this.dataset.mi),this.dataset.cid,this.checked)">'+c.name+'</label>';}).join(''):'')
+      +'<div class="fs11 mu mb1">Conseillers assignes :</div>'
+      +_st.conseillers.map(function(c){
+        var inT=m.team&&m.team.indexOf(c.id)>=0;
+        return '<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin:3px 0">'
+          +'<input type="checkbox"'+(inT?' checked':'')+' style="width:13px;height:13px;margin:0;accent-color:var(--g)"'
+          +' data-mgrname="'+m.name+'" data-cid="'+c.id+'"'
+          +' onchange="toggleTeamByName(this.dataset.mgrname,this.dataset.cid,this.checked)">'+c.name+'</label>';
+      }).join('')
       +'</div>';
   }).join('');
   html+='<div class="flex gap1 mt2"><input type="text" id="mgr-new" placeholder="Nom du manager" style="flex:1"><button class="btn btn-g btn-sm" onclick="addMgrSettings()">Ajouter</button></div></div>';
-  html+='<div class="card"><div class="card-title">Niveaux</div>'+[{lbl:'Elite',min:87,max:100,cls:'lv-elite'},{lbl:'Tres bon',min:75,max:86,cls:'lv-tb'},{lbl:'Bon',min:62,max:74,cls:'lv-bon'},{lbl:'Moyen',min:48,max:61,cls:'lv-moy'},{lbl:'Faible',min:30,max:47,cls:'lv-fai'},{lbl:'Critique',min:0,max:29,cls:'lv-crit'}].map(function(l){return'<div class="flex ac gap2 mb1"><span class="badge '+l.cls+'" style="min-width:60px;justify-content:center">'+l.lbl+'</span><div style="flex:1;height:4px;background:var(--bd);border-radius:2px;overflow:hidden"><div style="width:'+l.max+'%;height:100%;background:var(--g);border-radius:2px"></div></div><span class="fs11 mu">'+l.min+'-'+l.max+'</span></div>';}).join('')+'</div></div>';
+  html+='<div class="card"><div class="card-title">Niveaux de performance</div>'+[{lbl:'Elite',min:87,max:100,cls:'lv-elite'},{lbl:'Tres bon',min:75,max:86,cls:'lv-tb'},{lbl:'Bon',min:62,max:74,cls:'lv-bon'},{lbl:'Moyen',min:48,max:61,cls:'lv-moy'},{lbl:'Faible',min:30,max:47,cls:'lv-fai'},{lbl:'Critique',min:0,max:29,cls:'lv-crit'}].map(function(l){return'<div class="flex ac gap2 mb1"><span class="badge '+l.cls+'" style="min-width:60px;justify-content:center">'+l.lbl+'</span><div style="flex:1;height:4px;background:var(--bd);border-radius:2px;overflow:hidden"><div style="width:'+l.max+'%;height:100%;background:var(--g);border-radius:2px"></div></div><span class="fs11 mu">'+l.min+'-'+l.max+'</span></div>';}).join('')+'</div></div>';
   document.getElementById('stab-managers').innerHTML=html;
 }
 function toggleTeam(mi,cid,checked){
-  if(mi<0)return;
-  if(!_st.managers[mi].team)_st.managers[mi].team=[];
-  if(checked){if(_st.managers[mi].team.indexOf(cid)<0)_st.managers[mi].team.push(cid);}
-  else{_st.managers[mi].team=_st.managers[mi].team.filter(function(x){return x!==cid;});}
-  _sb.from('managers').update({team:_st.managers[mi].team}).eq('name',_st.managers[mi].name);
+  // Legacy - redirects to new function
+  var mgr=_st.managers[mi];
+  if(mgr)toggleTeamByName(mgr.name,cid,checked);
+}
+var _toggleLock=false;
+async function toggleTeamByName(mgrName,cid,checked){
+  // Lock prevents race conditions when multiple checkboxes clicked fast
+  while(_toggleLock)await new Promise(function(r){setTimeout(r,50);});
+  _toggleLock=true;
+  try{
+    // Find manager in _st.managers (source of truth)
+    var mgr=_st.managers.find(function(m){return m.name===mgrName;});
+    // If admin not in DB yet, create first
+    if(!mgr&&mgrName===ADMIN){
+      var ins=await _sb.from('managers').insert({name:ADMIN,team:[]});
+      if(ins.error&&!ins.error.message.includes('duplicate')){
+        toast('Erreur creation admin: '+ins.error.message,false);return;
+      }
+      await sbLoad();
+      mgr=_st.managers.find(function(m){return m.name===mgrName;});
+    }
+    if(!mgr){toast('Manager introuvable: '+mgrName,false);return;}
+    // Work on a fresh copy of team to avoid stale state
+    var currentTeam=(mgr.team||[]).slice();
+    if(checked){
+      if(currentTeam.indexOf(cid)<0)currentTeam.push(cid);
+    }else{
+      currentTeam=currentTeam.filter(function(x){return x!==cid;});
+    }
+    // Save to Supabase and await
+    var res=await _sb.from('managers').update({team:currentTeam}).eq('name',mgrName);
+    if(res.error){toast('Erreur sauvegarde: '+res.error.message,false);return;}
+    // Update local state immediately to reflect change
+    mgr.team=currentTeam;
+    toast('Affectation sauvegardee',true);
+  }finally{
+    _toggleLock=false;
+  }
 }
 async function addMgrSettings(){
   var n=document.getElementById('mgr-new').value.trim();if(!n)return;
