@@ -378,6 +378,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 var _sb=supabase.createClient('https://bkrzqitbzedmuwvuqxth.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrcnpxaXRiemVkbXV3dnVxeHRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzQ5MDYsImV4cCI6MjA5NDk1MDkwNn0.uTimyUG9_q-MiErZ3wjYOU0Xl4Vzj1ZkVg4i5X6_qBY');
 var _ANT='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';
 var _st={conseillers:[],evals:[],managers:[],planning:[],rh:[],suivi:[],suggestions:[]};
+var _role=null; // 'admin','manager','conseiller'
+var _conseillerSession=null; // {id, name} when role=conseiller
 var _sbBlocs=null,_sbWeights=null,_sbObjs=null;
 var ADMIN='Benjamin Rizzi';
 var USERS={'Benjamin Rizzi':{pwd:'BR@Stellar2025!',role:'admin'},'Hermes Coutureau':{pwd:'Mgr1#Invest!',role:'manager'},'Enzo Gebel':{pwd:'Mgr2#Invest!',role:'manager'},'Mathias Sarfati':{pwd:'Mgr3#Invest!',role:'manager'},'Louis Boob':{pwd:'Mgr4#Invest!',role:'manager'},'Terence Goncalves':{pwd:'Mgr5#Invest!',role:'manager'}};
@@ -438,6 +440,7 @@ var _curPage='dash';
 function renderCurrentPage(){if(_curPage==='dash')renderDash();else if(_curPage==='equipe')renderEquipe();else if(_curPage==='planning')renderWeekPlanning();}
 function go(p){
   if(p==='settings'&&!isAdmin()){toast('Acces reserve a l\'administrateur',false);return;}
+  if(_role==='conseiller'){showConseillerView();return;}
   _curPage=p;
   document.querySelectorAll('.panel').forEach(function(x){x.classList.remove('on');});
   document.querySelectorAll('.tnb,.sb-btn').forEach(function(b){b.classList.remove('on');});
@@ -457,7 +460,149 @@ function show(id){document.getElementById(id).classList.remove('hidden');}
 function hide(id){document.getElementById(id).classList.add('hidden');}
 
 // ── Auth ──
-function openMgrModal(){document.getElementById('mod-mgr').classList.remove('hidden');renderMgrList();}
+function openMgrModal(){openLoginScreen();}
+function openLoginScreen(){
+  var ov=document.getElementById('login-overlay');
+  if(ov){ov.style.display='flex';return;}
+  var overlay=document.createElement('div');
+  overlay.id='login-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:var(--n);z-index:9999;display:flex;align-items:center;justify-content:center';
+  var inner=document.createElement('div');
+  inner.style.cssText='width:420px;max-width:96vw';
+  // Header
+  var hdr=document.createElement('div');
+  hdr.style.cssText='text-align:center;margin-bottom:32px';
+  hdr.innerHTML='<div style="width:48px;height:48px;background:var(--g);border-radius:10px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px">'
+    +'<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0E1B2E" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>'
+    +'<div style="color:#fff;font-size:22px;font-weight:700">Stellar Invest Academy</div>'
+    +'<div style="color:var(--gl);font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:4px">Connexion</div>';
+  inner.appendChild(hdr);
+  // Role selector
+  var roleDiv=document.createElement('div');
+  roleDiv.id='login-role-select';
+  roleDiv.style.cssText='display:flex;flex-direction:column;gap:10px';
+  var roles=[
+    {type:'admin',icon:'&#x1F451;',label:'Administrateur',sub:'Acces complet',color:'rgba(201,168,76,.15)',border:'var(--gl)'},
+    {type:'manager',icon:'&#x1F464;',label:'Manager',sub:'Acces a votre equipe',color:'rgba(37,99,235,.15)',border:'#3B82F6'},
+    {type:'conseiller',icon:'&#x1F393;',label:'Conseiller',sub:'Mon espace personnel',color:'rgba(20,95,57,.15)',border:'#22C55E'}
+  ];
+  roles.forEach(function(r){
+    var btn=document.createElement('button');
+    btn.style.cssText='padding:16px;background:'+r.color+';border:1px solid '+r.border+';border-radius:10px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:left;display:flex;align-items:center;gap:12px;width:100%';
+    btn.innerHTML='<span style="font-size:22px">'+r.icon+'</span><div><div>'+r.label+'</div><div style="font-size:11px;opacity:.7;font-weight:400">'+r.sub+'</div></div>';
+    btn.dataset.rtype=r.type;
+    btn.onclick=function(){showLoginForm(this.dataset.rtype);};
+    roleDiv.appendChild(btn);
+  });
+  inner.appendChild(roleDiv);
+  // Login form container
+  var formDiv=document.createElement('div');
+  formDiv.id='login-form';
+  formDiv.style.display='none';
+  var backBtn=document.createElement('button');
+  backBtn.style.cssText='background:none;border:none;color:var(--gl);cursor:pointer;font-family:inherit;font-size:12px;margin-bottom:16px;padding:0';
+  backBtn.textContent='\u2190 Retour';
+  backBtn.onclick=function(){
+    document.getElementById('login-form').style.display='none';
+    document.getElementById('login-role-select').style.display='flex';
+  };
+  var formBody=document.createElement('div');
+  formBody.id='login-form-body';
+  formDiv.appendChild(backBtn);
+  formDiv.appendChild(formBody);
+  inner.appendChild(formDiv);
+  overlay.appendChild(inner);
+  document.body.appendChild(overlay);
+}
+function showLoginForm(roleType){
+  document.getElementById('login-role-select').style.display='none';
+  document.getElementById('login-form').style.display='block';
+  var body=document.getElementById('login-form-body');
+  if(roleType==='admin'){
+    body.innerHTML='<div style="color:var(--gl);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Administrateur</div>'
+      +'<div style="margin-bottom:12px"><input type="password" id="lf-pwd" placeholder="Mot de passe" style="width:100%;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:14px;font-family:inherit" onkeydown="if(event.key===&#39;Enter&#39;)doLoginAdmin()"></div>'
+      +'<button onclick="doLoginAdmin()" style="width:100%;padding:12px;background:var(--g);color:var(--n);border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Connexion</button>'
+      +'<div id="lf-err" style="color:#FCA5A5;font-size:12px;margin-top:8px;text-align:center"></div>';
+    setTimeout(function(){var el=document.getElementById('lf-pwd');if(el)el.focus();},100);
+  }else if(roleType==='manager'){
+    var activeMgrs=_st.managers.filter(function(m){return m.name!==ADMIN&&m.active!==false;});
+    body.innerHTML='<div style="color:#93C5FD;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Choisir votre profil</div>'
+      +'<select id="lf-mgr-sel" style="width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:13px;margin-bottom:10px;font-family:inherit">'
+      +'<option value="">-- Selectionnez --</option>'
+      +activeMgrs.map(function(m){return'<option value="'+m.name+'">'+m.name+'</option>';}).join('')
+      +'</select>'
+      +'<input type="password" id="lf-mgr-pwd" placeholder="Mot de passe" style="width:100%;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:14px;font-family:inherit;margin-bottom:12px" onkeydown="if(event.key===&#39;Enter&#39;)doLoginManager()">'
+      +'<button onclick="doLoginManager()" style="width:100%;padding:12px;background:#2563EB;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Connexion</button>'
+      +'<div id="lf-err" style="color:#FCA5A5;font-size:12px;margin-top:8px;text-align:center"></div>';
+  }else if(roleType==='conseiller'){
+    var activeCons=_st.conseillers.filter(function(c){return c.active!==false;});
+    body.innerHTML='<div style="color:#86EFAC;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Votre espace</div>'
+      +'<select id="lf-cons-sel" style="width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:13px;margin-bottom:10px;font-family:inherit">'
+      +'<option value="">-- Selectionnez votre nom --</option>'
+      +activeCons.map(function(c){return'<option value="'+c.id+'">'+c.name+'</option>';}).join('')
+      +'</select>'
+      +'<input type="password" id="lf-cons-pwd" placeholder="Mot de passe" style="width:100%;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:14px;font-family:inherit;margin-bottom:12px" onkeydown="if(event.key===&#39;Enter&#39;)doLoginConseiller()">'
+      +'<button onclick="doLoginConseiller()" style="width:100%;padding:12px;background:#16A34A;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Connexion</button>'
+      +'<div id="lf-err" style="color:#FCA5A5;font-size:12px;margin-top:8px;text-align:center"></div>';
+  }
+}
+function doLoginAdmin(){
+  var pwd=document.getElementById('lf-pwd').value;
+  var u=USERS[ADMIN];
+  if(!u||pwd!==u.pwd){document.getElementById('lf-err').textContent='Mot de passe incorrect.';return;}
+  _role='admin';_setCurMgr(ADMIN);
+  document.getElementById('mgr-dot').textContent=ADMIN[0];
+  document.getElementById('mgr-name').textContent=ADMIN;
+  var rb=document.getElementById('role-badge');if(rb){rb.style.display='inline';rb.textContent='ADMIN';}
+  hideLoginScreen();renderDash();toast('Bienvenue, '+ADMIN,true);
+}
+function doLoginManager(){
+  var name=document.getElementById('lf-mgr-sel').value;
+  var pwd=document.getElementById('lf-mgr-pwd').value;
+  if(!name){document.getElementById('lf-err').textContent='Selectionnez un manager.';return;}
+  var u=USERS[name];
+  if(!u||pwd!==u.pwd){document.getElementById('lf-err').textContent='Mot de passe incorrect.';return;}
+  var mgr=_st.managers.find(function(m){return m.name===name;});
+  if(mgr&&mgr.active===false){document.getElementById('lf-err').textContent='Acces desactive.';return;}
+  _role='manager';_setCurMgr(name);
+  document.getElementById('mgr-dot').textContent=name[0];
+  document.getElementById('mgr-name').textContent=name;
+  var rb=document.getElementById('role-badge');if(rb){rb.style.display='inline';rb.textContent='MANAGER';}
+  hideLoginScreen();renderDash();toast('Bienvenue, '+name,true);
+}
+async function doLoginConseiller(){
+  var cid=document.getElementById('lf-cons-sel').value;
+  var pwd=document.getElementById('lf-cons-pwd').value;
+  if(!cid){document.getElementById('lf-err').textContent='Selectionnez votre nom.';return;}
+  var cons=_st.conseillers.find(function(c){return c.id===cid;});
+  if(!cons){document.getElementById('lf-err').textContent='Conseiller introuvable.';return;}
+  // First login: no password set yet
+  if(!cons.pwd){
+    if(!pwd||pwd.length<4){document.getElementById('lf-err').textContent='Creez un mot de passe (min 4 caracteres).';return;}
+    // Save new password
+    var res=await _sb.from('conseillers').update({pwd:pwd}).eq('id',cid);
+    if(res.error){document.getElementById('lf-err').textContent='Erreur: '+res.error.message;return;}
+    cons.pwd=pwd;
+    toast('Mot de passe cree',true);
+  }else{
+    if(pwd!==cons.pwd){document.getElementById('lf-err').textContent='Mot de passe incorrect.';return;}
+  }
+  _role='conseiller';_conseillerSession={id:cid,name:cons.name};
+  _lcSet('sia_cons_session',{id:cid,name:cons.name});
+  hideLoginScreen();showConseillerView();toast('Bienvenue, '+cons.name,true);
+}
+function hideLoginScreen(){
+  var ov=document.getElementById('login-overlay');
+  if(ov)ov.style.display='none';
+}
+function logout(){
+  _role=null;_conseillerSession=null;_setCurMgr(null);
+  _lcSet('sia_cons_session',null);
+  document.getElementById('mgr-name').textContent='Choisir';
+  document.getElementById('mgr-dot').textContent='?';
+  var rb=document.getElementById('role-badge');if(rb)rb.style.display='none';
+  openLoginScreen();
+}
 function renderMgrList(){
   var names=Object.keys(USERS);
   document.getElementById('mod-mgr-list').innerHTML=names.map(function(n){
@@ -494,13 +639,20 @@ async function addMgrFromModal(){
   await sbLoad();renderMgrList();document.getElementById('mod-mgr-inp').value='';
 }
 function initMgr(){
+  // Check for saved conseiller session
+  var savedCons=_lcGet('sia_cons_session',null);
+  if(savedCons&&savedCons.id){
+    _role='conseiller';_conseillerSession=savedCons;
+    showConseillerView();return;
+  }
   var cm=_curMgr();
   if(cm){
+    _role=cm===ADMIN?'admin':'manager';
     document.getElementById('mgr-dot').textContent=cm[0];
     document.getElementById('mgr-name').textContent=cm;
     var rb=document.getElementById('role-badge');var u=USERS[cm];
     if(rb&&u){rb.style.display='inline';rb.textContent=u.role==='admin'?'ADMIN':'MANAGER';}
-  }else{openMgrModal();}
+  }else{openLoginScreen();}
 }
 
 // ── Dashboard ──
@@ -1247,7 +1399,11 @@ function renderMgrSettings(){
     return '<div style="padding:12px 0;border-bottom:1px solid var(--bd)">'
       +'<div class="flex ac gap2 mb2"><div class="mgr-dot" style="background:'+(isA?'var(--g)':'#2563EB')+'">'+m.name[0]+'</div>'
       +'<strong class="f1">'+m.name+'</strong><span style="font-size:10px;color:var(--mu)">'+(isA?'Administrateur':'Manager')+'</span>'
-      +(!isA?'<button class="btn btn-r btn-sm" data-name="'+m.name+'" onclick="removeMgr(this.dataset.name)">Supprimer</button>':'')+'</div>'
+      +(!isA?'<button class="btn btn-r btn-sm" data-name="'+m.name+'" onclick="removeMgr(this.dataset.name)">Supprimer</button>'
+        +(m.active===false
+          ?'<button class="btn btn-g btn-sm" data-name="'+m.name+'" onclick="toggleManagerActive(this.dataset.name,true)">Reactiver</button>'
+          :'<button class="btn btn-o btn-sm" data-name="'+m.name+'" onclick="toggleManagerActive(this.dataset.name,false)">Desactiver</button>')
+      :'')+'</div>'
       +'<div class="fs11 mu mb1">Conseillers assignes :</div>'
       +_st.conseillers.map(function(c){
         var inT=m.team&&m.team.indexOf(c.id)>=0;
@@ -1883,6 +2039,180 @@ function renderFicheHistorique(cid) {
   el.innerHTML = h;
 }
 
+
+
+// ── Espace Conseiller ──
+function showConseillerView(){
+  if(!_conseillerSession)return;
+  var cid=_conseillerSession.id;
+  var cons=_st.conseillers.find(function(x){return x.id===cid;});
+  if(!cons)return;
+  // Hide main layout, show conseiller panel
+  document.querySelector('.layout').style.display='none';
+  document.querySelector('.topbar').style.display='none';
+  var panel=document.getElementById('conseiller-panel');
+  if(!panel){
+    panel=document.createElement('div');
+    panel.id='conseiller-panel';
+    document.body.insertBefore(panel,document.body.firstChild);
+  }
+  panel.style.cssText='min-height:100vh;background:var(--ow);font-family:system-ui,sans-serif';
+  renderConseillerDash(cid,panel);
+}
+function renderConseillerDash(cid,panel){
+  var cons=_st.conseillers.find(function(x){return x.id===cid;});if(!cons)return;
+  var evs=_st.evals.filter(function(e){return e.cons_id===cid;}).sort(function(a,b){return(a.eval_date||'').localeCompare(b.eval_date||'');});
+  var planning=(_st.planning||[]).filter(function(p){return p.cons_id===cid&&p.status!=='realise';}).sort(function(a,b){return(a.planned_date||'').localeCompare(b.planned_date||'');});
+  var s=evs.length?evs[evs.length-1].score_global:null;
+  var l=s!==null?lv(s):{cls:'',lbl:'--',c:'#ccc'};
+  var avgT=evs.length?Math.round(evs.reduce(function(a,e){return a+e.score_tech;},0)/evs.length):0;
+  var avgC=evs.length?Math.round(evs.reduce(function(a,e){return a+e.score_com;},0)/evs.length):0;
+  var avgP=evs.length?Math.round(evs.reduce(function(a,e){return a+e.score_pro;},0)/evs.length):0;
+  var today=new Date().toISOString().split('T')[0];
+  var upcoming=planning.filter(function(p){return p.planned_date>=today;});
+  panel.innerHTML='<div style="background:var(--n);padding:16px 24px;display:flex;align-items:center;justify-content:space-between">'
+    +'<div style="display:flex;align-items:center;gap:10px">'
+    +'<div style="width:32px;height:32px;background:var(--g);border-radius:6px;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E1B2E" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>'
+    +'<div style="color:#fff;font-weight:700">Stellar Invest Academy</div></div>'
+    +'<div style="display:flex;align-items:center;gap:12px">'
+    +'<div style="color:var(--gl);font-size:12px">'+cons.name+'</div>'
+    +'<button onclick="showConsPwdModal()" style="padding:5px 12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#fff;font-size:11px;cursor:pointer;font-family:inherit">Mot de passe</button>'
+    +'<button onclick="logoutConseiller()" style="padding:5px 12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#fff;font-size:11px;cursor:pointer;font-family:inherit">Deconnexion</button>'
+    +'</div></div>'
+    +'<div style="max-width:900px;margin:0 auto;padding:24px 16px">'
+    // Profile card
+    +'<div style="background:#fff;border:1px solid var(--bd);border-radius:12px;padding:20px;margin-bottom:16px;display:flex;align-items:center;gap:20px">'
+    +'<div style="width:60px;height:60px;border-radius:50%;background:var(--n);display:flex;align-items:center;justify-content:center;color:var(--g);font-size:20px;font-weight:700;flex-shrink:0">'+ini(cons.name)+'</div>'
+    +'<div style="flex:1"><div style="font-size:20px;font-weight:700;color:var(--n)">'+cons.name+'</div>'
+    +(cons.date_entree?'<div style="font-size:12px;color:var(--mu);margin-top:2px">Entree le '+fd(cons.date_entree)+' — '+calcAnc(cons.date_entree)+'</div>':'')
+    +(cons.objectif?'<div style="font-size:12px;color:var(--g);margin-top:4px;font-weight:600">'+cons.objectif+'</div>':'')+'</div>'
+    +(s!==null?'<div style="text-align:center"><div style="font-size:36px;font-weight:700;color:'+l.c+'">'+s+'</div><div style="font-size:11px;color:var(--mu)">/100</div><span class="badge '+l.cls+'">'+l.lbl+'</span></div>':'')
+    +'</div>'
+    // KPIs
+    +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">'
+    +[{lbl:'Evaluations',val:evs.length,sub:'total'},{lbl:'Score moyen Tech.',val:avgT+'',sub:'/100'},{lbl:'Score moyen Com.',val:avgC+'',sub:'/100'},{lbl:'Score moyen Pro.',val:avgP+'',sub:'/100'}].map(function(k){return'<div class="kpi"><div class="kpi-lbl">'+k.lbl+'</div><div class="kpi-val">'+k.val+'</div><div class="kpi-sub">'+k.sub+'</div></div>';}).join('')
+    +'</div>'
+    // Planning
+    +(upcoming.length?'<div style="background:#fff;border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:16px"><div style="font-size:11px;font-weight:700;color:var(--n);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Prochaines evaluations</div>'
+    +upcoming.map(function(p){return'<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bd)"><span style="font-size:22px">&#128197;</span><div style="flex:1"><div style="font-size:12px;font-weight:600">'+p.eval_type+'</div><div style="font-size:11px;color:var(--mu)">'+(DB.rdv()[p.rdv]?DB.rdv()[p.rdv].label:p.rdv)+'</div></div><span style="font-size:12px;color:var(--mu)">'+fd(p.planned_date)+'</span></div>';}).join('')+'</div>':'')
+    // Progression chart
+    +(evs.length?'<div style="background:#fff;border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:16px"><div style="font-size:11px;font-weight:700;color:var(--n);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Progression</div><div style="position:relative;height:200px"><canvas id="cv-cons"></canvas></div></div>':'')
+    // Evaluations list (no private comments)
+    +'<div style="background:#fff;border:1px solid var(--bd);border-radius:12px;padding:16px"><div style="font-size:11px;font-weight:700;color:var(--n);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Historique ('+evs.length+')</div>'
+    +([].concat(evs).reverse().map(function(e){
+      var le=lv(e.score_global);
+      var typeTag=e.eval_type?'<span style="background:var(--bon-bg);color:var(--bon);border-radius:3px;padding:1px 5px;font-size:9px;margin-left:4px">'+e.eval_type+'</span>':'';
+      var aiTag=e.source==='ia'?'<span class="ai-badge" style="margin-left:4px">IA</span>':'';
+      return'<div style="padding:10px 0;border-bottom:1px solid var(--bd);cursor:pointer" onclick="showConsEvalDetail('+e.id+')">'
+        +'<div style="display:flex;align-items:center;gap:8px">'
+        +'<span style="font-size:11px;color:var(--mu);min-width:52px">'+fd(e.eval_date)+'</span>'
+        +'<span class="badge '+le.cls+'">'+le.lbl+'</span>'
+        +'<strong style="color:'+le.c+'">'+e.score_global+'</strong>'
+        +'<span style="font-size:11px;color:var(--mu);flex:1">'+(DB.rdv()[e.rdv]?DB.rdv()[e.rdv].label:e.rdv)+typeTag+aiTag+'</span>'
+        +'<div style="display:flex;gap:8px">'
+        +'<span style="font-size:10px;color:#2563EB">T:'+e.score_tech+'</span>'
+        +'<span style="font-size:10px;color:#1B7A4A">C:'+e.score_com+'</span>'
+        +'<span style="font-size:10px;color:#7C3AED">P:'+e.score_pro+'</span>'
+        +'</div></div></div>';
+    }).join('')||'<div style="color:var(--mu);text-align:center;padding:20px">Aucune evaluation.</div>')
+    +'</div></div>';
+  // Render chart
+  setTimeout(function(){
+    var el=document.getElementById('cv-cons');if(!el||!evs.length)return;
+    new Chart(el,{type:'line',data:{
+      labels:evs.map(function(e){return fd(e.eval_date);}),
+      datasets:[
+        {label:'Global',data:evs.map(function(e){return e.score_global;}),borderColor:'#C9A84C',backgroundColor:'rgba(201,168,76,.1)',fill:true,tension:.4,borderWidth:2.5,pointRadius:5,pointBackgroundColor:'#C9A84C'},
+        {label:'Tech.',data:evs.map(function(e){return e.score_tech;}),borderColor:'#2563EB',fill:false,tension:.4,borderWidth:1.5,pointRadius:3},
+        {label:'Com.',data:evs.map(function(e){return e.score_com;}),borderColor:'#1B7A4A',fill:false,tension:.4,borderWidth:1.5,pointRadius:3},
+        {label:'Pro.',data:evs.map(function(e){return e.score_pro;}),borderColor:'#7C3AED',fill:false,tension:.4,borderWidth:1.5,pointRadius:3}
+      ]
+    },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10}}},scales:{y:{min:0,max:100}}}});
+  },100);
+}
+function showConsEvalDetail(eid){
+  var e=_st.evals.find(function(x){return x.id===eid;});if(!e)return;
+  var l=lv(e.score_global);
+  var overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;display:flex;align-items:center;justify-content:center';
+  var box=document.createElement('div');
+  box.style.cssText='background:#fff;border-radius:12px;padding:24px;width:520px;max-width:96vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)';
+  // Show blocs but NOT manager synthese/comments
+  var h='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'
+    +'<div><div style="font-size:16px;font-weight:700">'+fd(e.eval_date)+' — '+(DB.rdv()[e.rdv]?DB.rdv()[e.rdv].label:e.rdv)+'</div>'
+    +'<div style="font-size:12px;color:var(--mu)">'+(e.eval_type||'')+'</div></div>'
+    +'<strong style="font-size:30px;color:'+l.c+'">'+e.score_global+'</strong></div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">'
+    +[{lbl:'Technique',s:e.score_tech},{lbl:'Commercial',s:e.score_com},{lbl:'Pro.',s:e.score_pro}].map(function(x){return'<div style="text-align:center;padding:10px;background:'+sc(x.s)+'18;border-radius:8px"><div style="font-size:10px;color:var(--mu)">'+x.lbl+'</div><div style="font-size:20px;font-weight:700;color:'+sc(x.s)+'">'+x.s+'</div></div>';}).join('')+'</div>';
+  ['blocs_tech','blocs_com','blocs_pro'].forEach(function(key){
+    var lb={'blocs_tech':'Technique','blocs_com':'Commercial','blocs_pro':'Professionnalisme'}[key];
+    var blocs=e[key]||[];if(!blocs.length)return;
+    h+='<div style="font-size:9px;text-transform:uppercase;color:var(--g);font-weight:700;margin:12px 0 6px;border-bottom:1px solid var(--gl);padding-bottom:4px">'+lb+'</div>';
+    blocs.forEach(function(b){
+      var qc=QCOL[b.q]||'#ccc';
+      h+='<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #F5F2ED">'
+        +'<div style="width:8px;height:8px;border-radius:50%;background:'+qc+';flex-shrink:0"></div>'
+        +'<span style="font-size:12px;flex:1">'+b.b+'</span>'
+        +'<span style="font-size:10px;font-weight:700;color:'+qc+'">'+(QLBL[b.q]||b.q)+'</span></div>';
+      // NO manager comments shown to conseiller
+    });
+  });
+  // Show objections (anonymized - no manager note)
+  var objs=e.objs||[];
+  if(objs.length){
+    h+='<div style="font-size:9px;text-transform:uppercase;color:var(--g);font-weight:700;margin:12px 0 6px;border-bottom:1px solid var(--gl);padding-bottom:4px">Objections</div>';
+    objs.forEach(function(o){var txt=o.text||o;h+='<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #F5F2ED"><span style="font-size:14px;color:'+(o.ok?'var(--tb)':'var(--crit)')+'">'+(o.ok?'V':'X')+'</span><span style="font-size:12px">'+txt+'</span></div>';});
+  }
+  // NO synthese shown (private manager feedback)
+  box.innerHTML=h+'<button onclick="this.parentElement.parentElement.remove()" style="width:100%;padding:10px;margin-top:16px;background:var(--ow);border:1px solid var(--bd);border-radius:8px;cursor:pointer;font-family:inherit">Fermer</button>';
+  overlay.appendChild(box);overlay.onclick=function(ev){if(ev.target===overlay)document.body.removeChild(overlay);};
+  document.body.appendChild(overlay);
+}
+function showConsPwdModal(){
+  var overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;display:flex;align-items:center;justify-content:center';
+  var box=document.createElement('div');
+  box.style.cssText='background:#fff;border-radius:12px;padding:24px;width:380px;max-width:96vw';
+  box.innerHTML='<div style="font-size:16px;font-weight:700;margin-bottom:16px">Modifier mon mot de passe</div>'
+    +'<div style="margin-bottom:10px"><label style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--mu);display:block;margin-bottom:4px">Nouveau mot de passe</label><input type="password" id="cpwd-new" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--bd);font-family:inherit"></div>'
+    +'<div style="margin-bottom:16px"><label style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--mu);display:block;margin-bottom:4px">Confirmer</label><input type="password" id="cpwd-conf" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--bd);font-family:inherit"></div>'
+    +'<div id="cpwd-err" style="color:var(--crit);font-size:12px;margin-bottom:10px"></div>'
+    +'<div style="display:flex;gap:10px">'
+    +'<button onclick="saveConsPwd()" style="flex:1;padding:10px;background:var(--g);color:var(--n);border:none;border-radius:8px;font-weight:700;cursor:pointer;font-family:inherit">Sauvegarder</button>'
+    +'<button onclick="this.parentElement.parentElement.parentElement.remove()" style="padding:10px 16px;border:1px solid var(--bd);background:var(--ow);border-radius:8px;cursor:pointer;font-family:inherit">Annuler</button>'
+    +'</div>';
+  overlay.appendChild(box);document.body.appendChild(overlay);
+}
+async function saveConsPwd(){
+  var np=document.getElementById('cpwd-new').value;
+  var cp=document.getElementById('cpwd-conf').value;
+  var err=document.getElementById('cpwd-err');
+  if(np.length<4){err.textContent='Minimum 4 caracteres.';return;}
+  if(np!==cp){err.textContent='Les mots de passe ne correspondent pas.';return;}
+  var cid=_conseillerSession.id;
+  var res=await _sb.from('conseillers').update({pwd:np}).eq('id',cid);
+  if(res.error){err.textContent='Erreur: '+res.error.message;return;}
+  await sbLoad();
+  var cons=_st.conseillers.find(function(x){return x.id===cid;});
+  if(cons)cons.pwd=np;
+  document.querySelector('[id^="cpwd"]').closest('div[style*="position:fixed"]').remove();
+  toast('Mot de passe modifie',true);
+}
+function logoutConseiller(){
+  _role=null;_conseillerSession=null;_lcSet('sia_cons_session',null);
+  var panel=document.getElementById('conseiller-panel');if(panel)panel.style.display='none';
+  document.querySelector('.layout').style.display='flex';
+  document.querySelector('.topbar').style.display='flex';
+  openLoginScreen();
+}
+
+// ── Manager deactivation in settings ──
+async function toggleManagerActive(mgrName,active){
+  var res=await _sb.from('managers').update({active:active}).eq('name',mgrName);
+  if(res.error){toast('Erreur: '+res.error.message,false);return;}
+  await sbLoad();renderMgrSettings();
+  toast(active?'Manager reactive':'Manager desactive',true);
+}
 </script>
 </body>
 </html>
