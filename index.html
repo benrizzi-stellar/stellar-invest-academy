@@ -182,6 +182,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
     <div id="fiche-planning-content" style="display:none"></div>
     <div id="fiche-suivi-content" style="display:none"></div>
     <div id="fiche-rh-content" style="display:none"></div>
+    <div id="fiche-historique-content" style="display:none"></div>
   </div>
   <div id="p-eval" class="panel">
     <div style="font-size:20px;font-weight:700;color:var(--n)" class="mb3">Grille d&#39;evaluation</div>
@@ -275,13 +276,14 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
       <button class="seg-b" onclick="showTab('managers',this)">Managers</button>
       <button class="seg-b" onclick="showTab('weights',this)">Ponderations</button>
       <button class="seg-b" onclick="showTab('objs',this)">Objections</button>
-      <button class="seg-b" onclick="showTab('suggestions',this)">Suggestions</button>
+      <button class="seg-b" onclick="showTab('suggestions',this)">Suggestions</button><button class="seg-b" onclick="showTab('control',this)">Controle</button>
     </div>
     <div id="stab-blocs"></div>
     <div id="stab-managers" class="hidden"></div>
     <div id="stab-weights" class="hidden"></div>
     <div id="stab-objs" class="hidden"></div>
     <div id="stab-suggestions" class="hidden"></div>
+    <div id="stab-control" class="hidden"></div>
   </div>
 </div></div>
 
@@ -633,7 +635,7 @@ function openFiche(cid){
   // Build tabs
   var tabsEl=document.getElementById('fiche-tabs');
   tabsEl.innerHTML='';
-  var tabs=[{id:'eval',lbl:'Evaluations'},{id:'planning',lbl:'Planning'},{id:'suivi',lbl:'Suivi managerial'},{id:'rh',lbl:'Points RH'}];
+  var tabs=[{id:'eval',lbl:'Evaluations'},{id:'planning',lbl:'Planning'},{id:'suivi',lbl:'Suivi managerial'},{id:'rh',lbl:'Points RH'},{id:'historique',lbl:'Historique complet'}];
   tabs.forEach(function(tab,i){
     var btn=document.createElement('button');
     btn.className='seg-b'+(i===0?' on':'');
@@ -651,7 +653,7 @@ function showFicheTab(tab,btn){
   document.getElementById('fiche-planning-content').style.display='none';
   document.getElementById('fiche-suivi-content').style.display='none';
   document.getElementById('fiche-rh-content').style.display='none';
-  var map={eval:'fiche-content',planning:'fiche-planning-content',suivi:'fiche-suivi-content',rh:'fiche-rh-content'};
+  var map={eval:'fiche-content',planning:'fiche-planning-content',suivi:'fiche-suivi-content',rh:'fiche-rh-content',historique:'fiche-content'};
   document.getElementById(map[tab]).style.display='block';
   document.querySelectorAll('#fiche-tabs .seg-b').forEach(function(b){b.classList.remove('on');});
   if(btn)btn.classList.add('on');
@@ -659,6 +661,7 @@ function showFicheTab(tab,btn){
   if(tab==='rh')openFicheRH(cid);
   if(tab==='suivi')openSuiviManagerial(cid);
   if(tab==='planning')renderFichePlanning(cid);
+  if(tab==='historique')renderFicheHistorique(cid);
 }
 function renderFicheEval(cid){
   var c=_st.conseillers.find(function(x){return x.id===cid;});if(!c)return;
@@ -897,6 +900,20 @@ function addObj(){
   saveObjs(o);inp.value='';renderObjList(rdv);
 }
 async function saveEval(){
+  var rdvEl=document.getElementById('ev-rdv');var consEl=document.getElementById('ev-cons');
+  var typeEl=document.getElementById('ev-type');var dateEl=document.getElementById('ev-date');
+  if(!consEl||!consEl.value){alert('Selectionnez un conseiller.');return;}
+  if(!rdvEl||!rdvEl.value){alert('Selectionnez un type de RDV.');return;}
+  if(!dateEl||!dateEl.value){alert('La date est obligatoire.');return;}
+  var cons=_st.conseillers.find(function(x){return x.id===consEl.value;});
+  var confirmMsg='<strong>Conseiller :</strong> '+(cons?cons.name:consEl.value)+'<br>'
+    +'<strong>RDV :</strong> '+(DB.rdv()[rdvEl.value]?DB.rdv()[rdvEl.value].label:rdvEl.value)+'<br>'
+    +'<strong>Type :</strong> '+(typeEl?typeEl.value:'--')+'<br>'
+    +'<strong>Manager :</strong> '+(_curMgr()||'Non defini')+'<br>'
+    +'<strong>Date :</strong> '+dateEl.value;
+  confirmAction(confirmMsg, function(){_doSaveEval();});
+}
+async function _doSaveEval(){
   var rdv=document.getElementById('ev-rdv').value;var w=getWeights()[rdv];
   function ds(dim){var v=Object.values(evBlocs[dim]).filter(function(e){return e.q;});return v.length?Math.round(v.reduce(function(s,e){return s+QVAL[e.q];},0)/v.length):0;}
   var t=ds('tech'),c=ds('com'),p=ds('pro');var g=Math.round(t*w.tech/100+c*w.com/100+p*w.pro/100);
@@ -910,6 +927,8 @@ async function saveEval(){
     var log=(prev&&prev.edit_log)||[];if(!Array.isArray(log))log=[];
     log.push({edited_at:new Date().toISOString(),edited_by:_curMgr(),prev_score:prev?prev.score_global:null});
     payload.edit_log=log;
+    var prevEval=_st.evals.find(function(x){return x.id===_editingEvalId;});
+    if(prevEval)await saveSnapshot('evaluations',prevEval);
     res=await _sb.from('evaluations').update(payload).eq('id',_editingEvalId);
     _editingEvalId=null;
   }else{
@@ -931,6 +950,7 @@ async function saveEval(){
     +'<button class="btn btn-o" onclick="initEval()">Nouvelle evaluation</button><button class="btn btn-o" onclick="go(\'dash\')">Dashboard</button></div>';
   hide('eval-s2');show('eval-s3');
 }
+// (end _doSaveEval)
 
 // ── Planning ──
 var _wkOff=0;
@@ -1049,6 +1069,20 @@ function openPlanningModal(){
   document.getElementById('mod-planning').classList.remove('hidden');
 }
 async function savePlanningItem(){
+  var consId2=document.getElementById('pl-cons').value;
+  var date2=document.getElementById('pl-date').value;
+  if(!consId2||!date2){alert('Conseiller et date obligatoires.');return;}
+  var cons2=_st.conseillers.find(function(x){return x.id===consId2;});
+  var mgr2=document.getElementById('pl-mgr')?document.getElementById('pl-mgr').value:(_curMgr()||'Manager');
+  var type2=document.getElementById('pl-type').value;
+  var rdv2=document.getElementById('pl-rdv').value;
+  var confirmMsg2='<strong>Conseiller :</strong> '+(cons2?cons2.name:consId2)+'<br>'
+    +'<strong>Manager :</strong> '+mgr2+'<br>'
+    +'<strong>Type :</strong> '+type2+' — '+rdv2+'<br>'
+    +'<strong>Date :</strong> '+fd(date2);
+  confirmAction(confirmMsg2, function(){_doSavePlanningItem();});
+}
+async function _doSavePlanningItem(){
   var consId=document.getElementById('pl-cons').value;var rdv=document.getElementById('pl-rdv').value;
   var evalType=document.getElementById('pl-type').value;var date=document.getElementById('pl-date').value;
   var notes=document.getElementById('pl-notes').value.trim();var priority=document.getElementById('pl-priority').value;
@@ -1058,6 +1092,7 @@ async function savePlanningItem(){
   if(res.error){alert('Erreur: '+res.error.message);return;}
   await sbLoad();closeModal('mod-planning');renderWeekPlanning();toast('Planifie',true);
 }
+// (end _doSavePlanningItem)
 function renderFichePlanning(cid){
   var el=document.getElementById('fiche-planning-content');if(!el)return;
   var items=(_st.planning||[]).filter(function(p){return p.cons_id===cid;});
@@ -1178,6 +1213,7 @@ function showTab(tab,btn){
   if(tab==='weights')renderWeightsEditor();
   if(tab==='objs')renderObjSettings();
   if(tab==='suggestions')renderSuggestions();
+  if(tab==='control')renderControlAdmin();
 }
 function renderBlocsEditor(){
   if(!isAdmin()){document.getElementById('stab-blocs').innerHTML='<div class="al al-warn">Acces reserve a l\'administrateur.</div>';return;}
@@ -1348,6 +1384,16 @@ function openSuiviModal(type,cid,entryId){
   document.getElementById('mod-suivi').classList.remove('hidden');
 }
 async function saveSuivi(){
+  var cid3=document.getElementById('sm-cons-id').value;
+  var type3=document.getElementById('sm-type').value;
+  var cons3=_st.conseillers.find(function(x){return x.id===cid3;});
+  var typeLabel3={point_mensuel:'Point mensuel',commentaire:'Commentaire libre',integration:'Point integration',annuel:'Point annuel'};
+  var confirmMsg3='<strong>Conseiller :</strong> '+(cons3?cons3.name:cid3)+'<br>'
+    +'<strong>Type :</strong> '+(typeLabel3[type3]||type3)+'<br>'
+    +'<strong>Manager :</strong> '+(_curMgr()||'Non defini');
+  confirmAction(confirmMsg3, function(){_doSaveSuivi();});
+}
+async function _doSaveSuivi(){
   var cid=document.getElementById('sm-cons-id').value;var type=document.getElementById('sm-type').value;
   var eid=document.getElementById('sm-entry-id').value;var mois=null;var content={};
   if(type==='commentaire'){content.texte=document.getElementById('sm-texte').value.trim();content.priorite=document.getElementById('sm-priorite').value;}
@@ -1360,8 +1406,9 @@ async function saveSuivi(){
   var payload={cons_id:cid,type:type,mois:mois,manager:_curMgr(),content:content,updated_at:new Date().toISOString()};
   var res=eid?await _sb.from('suivi_managerial').update(payload).eq('id',eid):await _sb.from('suivi_managerial').insert(payload);
   if(res.error){alert('Erreur: '+res.error.message);return;}
-  closeModal('mod-suivi');await sbLoad();openSuiviManagerial(cid);toast('Enregistre',true);
+  closeModal('mod-suivi');await sbLoad();openSuiviManagerial(cid3);toast('Enregistre',true);
 }
+// (end _doSaveSuivi)
 async function deleteSuivi(id){
   if(!confirm('Supprimer ?'))return;
   var entry=(_st.suivi||[]).find(function(x){return x.id===id;});
@@ -1436,6 +1483,16 @@ function openRHModal(type,cid){
   document.getElementById('mod-rh').classList.remove('hidden');
 }
 async function saveRHEntry(){
+  var cid4=document.getElementById('rh-cons-id').value;
+  var type4=document.getElementById('rh-type').value;
+  var cons4=_st.conseillers.find(function(x){return x.id===cid4;});
+  var typeLabel4={integration:'Point integration',annuel:'Point annuel',commentaire:'Commentaire RH'};
+  var confirmMsg4='<strong>Conseiller :</strong> '+(cons4?cons4.name:cid4)+'<br>'
+    +'<strong>Type :</strong> '+(typeLabel4[type4]||type4)+'<br>'
+    +'<strong>Par :</strong> '+(_curMgr()||'Non defini');
+  confirmAction(confirmMsg4, function(){_doSaveRHEntry();});
+}
+async function _doSaveRHEntry(){
   var cid=document.getElementById('rh-cons-id').value;var type=document.getElementById('rh-type').value;
   var eid=document.getElementById('rh-entry-id').value;var title=document.getElementById('rh-title').value.trim()||type;
   var content={};
@@ -1444,8 +1501,9 @@ async function saveRHEntry(){
   var payload={cons_id:cid,type:type,title:title,content:content,created_by:_curMgr(),updated_at:new Date().toISOString()};
   var res=eid?await _sb.from('rh_entries').update(payload).eq('id',eid):await _sb.from('rh_entries').insert(payload);
   if(res.error){alert('Erreur: '+res.error.message);return;}
-  closeModal('mod-rh');await sbLoad();openFicheRH(cid);toast('Enregistre',true);
+  closeModal('mod-rh');await sbLoad();openFicheRH(cid4);toast('Enregistre',true);
 }
+// (end _doSaveRHEntry)
 async function deleteRHEntry(id){
   if(!confirm('Supprimer ?'))return;
   var entry=(_st.rh||[]).find(function(x){return x.id===id;});
@@ -1502,6 +1560,284 @@ async function init(){
   else{document.getElementById('p-dash').innerHTML='<div style="text-align:center;padding:40px;color:#8B1515"><div style="font-size:32px">!</div><div>Impossible de se connecter.</div></div>';}
 }
 init();
+
+// ══════════════════════════════════════════════════
+// MODULE : SÉCURISATION & CONTRÔLE ADMIN
+// ══════════════════════════════════════════════════
+
+// ── Snapshot (versioning) ──
+async function saveSnapshot(tableName, record) {
+  // Store a full JSON snapshot before any modification
+  try {
+    await _sb.from('eval_snapshots').insert({
+      table_name: tableName,
+      record_id: record.id,
+      snapshot: record,
+      saved_by: _curMgr(),
+      saved_at: new Date().toISOString()
+    });
+  } catch(e) { console.warn('Snapshot failed:', e); }
+}
+
+// ── Confirmation modale universelle ──
+function confirmAction(msg, onConfirm) {
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#fff;border-radius:12px;padding:28px;max-width:460px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,.3)';
+  box.innerHTML = '<div style="font-size:15px;font-weight:700;color:var(--n);margin-bottom:14px">Confirmation</div>'
+    + '<div style="font-size:13px;color:var(--tx);line-height:1.6;background:var(--gp);padding:12px;border-radius:8px;border:1px solid var(--gl);margin-bottom:18px">' + msg + '</div>'
+    + '<div style="display:flex;gap:10px;justify-content:flex-end">'
+    + '<button id="conf-cancel" style="padding:8px 18px;border-radius:var(--r);border:1px solid var(--bd);background:var(--ow);font-family:inherit;font-size:12px;cursor:pointer">Annuler</button>'
+    + '<button id="conf-ok" style="padding:8px 18px;border-radius:var(--r);border:none;background:var(--g);color:var(--n);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">Confirmer</button>'
+    + '</div>';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  document.getElementById('conf-cancel').onclick = function() { document.body.removeChild(overlay); };
+  document.getElementById('conf-ok').onclick = function() { document.body.removeChild(overlay); onConfirm(); };
+}
+
+// ── Historique des modifications ──
+async function logModification(tableName, recordId, fieldChanges, prevSnapshot) {
+  try {
+    await _sb.from('modification_log').insert({
+      table_name: tableName,
+      record_id: recordId,
+      changed_by: _curMgr(),
+      changed_at: new Date().toISOString(),
+      changes: fieldChanges,
+      prev_snapshot: prevSnapshot || null
+    });
+  } catch(e) { console.warn('Log failed:', e); }
+}
+
+// ── Correction d'affectation (admin) ──
+function openReassignModal(evalId) {
+  if (!isAdmin()) { toast('Acces reserve a l\'administrateur', false); return; }
+  var e = _st.evals.find(function(x) { return x.id === evalId; });
+  if (!e) return;
+  var modal = document.createElement('div');
+  modal.id = 'mod-reassign';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;display:flex;align-items:center;justify-content:center';
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#fff;border-radius:12px;padding:24px;width:460px;max-width:96vw;box-shadow:0 20px 60px rgba(0,0,0,.3)';
+  var consOptions = _st.conseillers.map(function(c) {
+    return '<option value="' + c.id + '"' + (c.id === e.cons_id ? ' selected' : '') + '>' + c.name + '</option>';
+  }).join('');
+  var mgrOptions = Object.keys(USERS).map(function(n) {
+    return '<option value="' + n + '"' + (n === e.manager ? ' selected' : '') + '>' + n + '</option>';
+  }).join('');
+  var rdvOptions = ['phoning','d0','d1scpi','d1asset','d1pe','d2'].map(function(r) {
+    var lbl = {phoning:'Phoning',d0:'D0',d1scpi:'D1 SCPI',d1asset:'D1 Asset',d1pe:'D1 PE',d2:'D2'};
+    return '<option value="' + r + '"' + (r === e.rdv ? ' selected' : '') + '>' + lbl[r] + '</option>';
+  }).join('');
+  var typeOptions = ['Drill','Ecoute','Oral','Analyse RDV'].map(function(t) {
+    return '<option value="' + t + '"' + (t === e.eval_type ? ' selected' : '') + '>' + t + '</option>';
+  }).join('');
+  box.innerHTML = '<div style="font-size:16px;font-weight:700;color:var(--n);margin-bottom:16px">Corriger l\'affectation</div>'
+    + '<div style="font-size:11px;color:var(--mu);background:var(--gp);padding:8px 12px;border-radius:6px;margin-bottom:16px">Score: <strong>' + e.score_global + '</strong> — Date: <strong>' + fd(e.eval_date) + '</strong></div>'
+    + '<div class="g2 gap2 mb2"><div><label class="lbl">Conseiller</label><select id="ra-cons">' + consOptions + '</select></div>'
+    + '<div><label class="lbl">Manager</label><select id="ra-mgr">' + mgrOptions + '</select></div></div>'
+    + '<div class="g2 gap2 mb2"><div><label class="lbl">Type RDV</label><select id="ra-rdv">' + rdvOptions + '</select></div>'
+    + '<div><label class="lbl">Type eval</label><select id="ra-type">' + typeOptions + '</select></div></div>'
+    + '<div class="mb3"><label class="lbl">Date</label><input type="date" id="ra-date" value="' + (e.eval_date || '') + '" style="width:100%"></div>'
+    + '<div style="display:flex;gap:10px"><button id="ra-save" style="flex:1;padding:10px;background:var(--g);color:var(--n);border:none;border-radius:var(--r);font-weight:700;cursor:pointer;font-family:inherit">Enregistrer la correction</button>'
+    + '<button id="ra-cancel" style="padding:10px 16px;border:1px solid var(--bd);background:var(--ow);border-radius:var(--r);cursor:pointer;font-family:inherit">Annuler</button></div>';
+  modal.appendChild(box);
+  document.body.appendChild(modal);
+  document.getElementById('ra-cancel').onclick = function() { document.body.removeChild(modal); };
+  document.getElementById('ra-save').onclick = async function() {
+    var newConsId = document.getElementById('ra-cons').value;
+    var newMgr = document.getElementById('ra-mgr').value;
+    var newRdv = document.getElementById('ra-rdv').value;
+    var newType = document.getElementById('ra-type').value;
+    var newDate = document.getElementById('ra-date').value;
+    var newCons = _st.conseillers.find(function(c) { return c.id === newConsId; });
+    var confirmMsg = 'Corriger cette evaluation :<br><br>'
+      + '<strong>Conseiller :</strong> ' + (newCons ? newCons.name : newConsId) + '<br>'
+      + '<strong>Manager :</strong> ' + newMgr + '<br>'
+      + '<strong>Type :</strong> ' + newType + ' — ' + newRdv + '<br>'
+      + '<strong>Date :</strong> ' + fd(newDate);
+    document.body.removeChild(modal);
+    confirmAction(confirmMsg, async function() {
+      await saveSnapshot('evaluations', e);
+      var changes = {};
+      if (newConsId !== e.cons_id) changes.cons_id = { from: e.cons_id, to: newConsId };
+      if (newMgr !== e.manager) changes.manager = { from: e.manager, to: newMgr };
+      if (newRdv !== e.rdv) changes.rdv = { from: e.rdv, to: newRdv };
+      if (newType !== e.eval_type) changes.eval_type = { from: e.eval_type, to: newType };
+      if (newDate !== e.eval_date) changes.eval_date = { from: e.eval_date, to: newDate };
+      var res = await _sb.from('evaluations').update({
+        cons_id: newConsId, manager: newMgr, rdv: newRdv, eval_type: newType, eval_date: newDate
+      }).eq('id', evalId);
+      if (res.error) { alert('Erreur: ' + res.error.message); return; }
+      await logModification('evaluations', evalId, changes, e);
+      await sbLoad();
+      renderCurrentPage();
+      toast('Affectation corrigee', true);
+    });
+  };
+}
+
+// ── Onglet Contrôle Admin ──
+function renderControlAdmin() {
+  var el = document.getElementById('stab-control');
+  if (!el) return;
+  if (!isAdmin()) { el.innerHTML = '<div class="al al-warn">Acces reserve a l\'administrateur.</div>'; return; }
+  var evals = _st.evals;
+  var today = new Date().toISOString().split('T')[0];
+  // 1. Sans conseiller rattaché
+  var nocons = evals.filter(function(e) { return !e.cons_id || !_st.conseillers.find(function(c) { return c.id === e.cons_id; }); });
+  // 2. Sans manager
+  var nomgr = evals.filter(function(e) { return !e.manager; });
+  // 3. Modifiées récemment (ont un edit_log)
+  var modified = evals.filter(function(e) { return e.edit_log && Array.isArray(e.edit_log) && e.edit_log.length > 0; });
+  // 4. Doublons potentiels (même conseiller + même date + même rdv)
+  var seen = {}; var dupes = [];
+  evals.forEach(function(e) {
+    var key = e.cons_id + '_' + e.eval_date + '_' + e.rdv;
+    if (seen[key]) dupes.push(e);
+    else seen[key] = true;
+  });
+  // 5. Dernières 10 évaluations
+  var last10 = [].concat(evals).sort(function(a,b) { return (b.eval_date||'').localeCompare(a.eval_date||''); }).slice(0, 10);
+  var h = '<div style="font-size:18px;font-weight:700;color:var(--n);margin-bottom:20px">Tableau de controle</div>';
+  // KPIs
+  h += '<div class="g4 mb3">'
+    + kpiBox('Total evaluations', evals.length, 'dans Supabase', false)
+    + kpiBox('Sans conseiller', nocons.length, 'a corriger', nocons.length > 0)
+    + kpiBox('Sans manager', nomgr.length, 'a corriger', nomgr.length > 0)
+    + kpiBox('Doublons potentiels', dupes.length, 'a verifier', dupes.length > 0)
+    + '</div>';
+  // Anomalies
+  if (nocons.length || nomgr.length || dupes.length) {
+    h += '<div class="card mb3"><div class="card-title" style="color:var(--crit)">Anomalies detectees</div>';
+    if (nocons.length) {
+      h += '<div class="sep">Sans conseiller rattache (' + nocons.length + ')</div>';
+      h += '<table class="tbl"><thead><tr><th>ID</th><th>Date</th><th>RDV</th><th>Manager</th><th>Score</th><th>Action</th></tr></thead><tbody>';
+      h += nocons.map(function(e) {
+        return '<tr><td class="fs10 mu">' + e.id.slice(0,8) + '...</td><td>' + fd(e.eval_date) + '</td><td>' + e.rdv + '</td><td>' + (e.manager||'--') + '</td><td style="font-weight:700">' + e.score_global + '</td>'
+          + '<td><button class="btn btn-g btn-sm" data-eid="' + e.id + '" onclick="openReassignModal(this.dataset.eid)">Corriger</button></td></tr>';
+      }).join('');
+      h += '</tbody></table>';
+    }
+    if (nomgr.length) {
+      h += '<div class="sep">Sans manager (' + nomgr.length + ')</div>';
+      h += '<table class="tbl"><thead><tr><th>Conseiller</th><th>Date</th><th>RDV</th><th>Score</th><th>Action</th></tr></thead><tbody>';
+      h += nomgr.map(function(e) {
+        var c = _st.conseillers.find(function(x) { return x.id === e.cons_id; });
+        return '<tr><td>' + (c ? c.name : '?') + '</td><td>' + fd(e.eval_date) + '</td><td>' + e.rdv + '</td><td style="font-weight:700">' + e.score_global + '</td>'
+          + '<td><button class="btn btn-g btn-sm" data-eid="' + e.id + '" onclick="openReassignModal(this.dataset.eid)">Corriger</button></td></tr>';
+      }).join('');
+      h += '</tbody></table>';
+    }
+    if (dupes.length) {
+      h += '<div class="sep">Doublons potentiels (' + dupes.length + ')</div>';
+      h += '<table class="tbl"><thead><tr><th>Conseiller</th><th>Date</th><th>RDV</th><th>Score</th><th>Actions</th></tr></thead><tbody>';
+      h += dupes.map(function(e) {
+        var c = _st.conseillers.find(function(x) { return x.id === e.cons_id; });
+        return '<tr><td>' + (c ? c.name : '?') + '</td><td>' + fd(e.eval_date) + '</td><td>' + e.rdv + '</td><td style="font-weight:700">' + e.score_global + '</td>'
+          + '<td class="flex gap1"><button class="btn btn-o btn-sm" data-eid="' + e.id + '" onclick="showDrillModal(this.dataset.eid)">Voir</button>'
+          + '<button class="btn btn-r btn-sm" data-eid="' + e.id + '" onclick="deleteEval(this.dataset.eid)">Supprimer</button></td></tr>';
+      }).join('');
+      h += '</tbody></table>';
+    }
+    h += '</div>';
+  } else {
+    h += '<div class="al al-ok mb3">Aucune anomalie detectee — toutes les evaluations sont correctement rattachees.</div>';
+  }
+  // Modifiées récemment
+  if (modified.length) {
+    h += '<div class="card mb3"><div class="card-title">Evaluations modifiees (' + modified.length + ')</div>';
+    h += '<table class="tbl"><thead><tr><th>Conseiller</th><th>Date eval</th><th>Modifie par</th><th>Modifie le</th><th>Action</th></tr></thead><tbody>';
+    h += modified.slice(0, 15).map(function(e) {
+      var c = _st.conseillers.find(function(x) { return x.id === e.cons_id; });
+      var lastEdit = e.edit_log[e.edit_log.length - 1];
+      return '<tr><td>' + (c ? c.name : '?') + '</td><td>' + fd(e.eval_date) + '</td>'
+        + '<td>' + (lastEdit.edited_by || '--') + '</td><td>' + fd(lastEdit.edited_at) + '</td>'
+        + '<td><button class="btn btn-o btn-sm" data-eid="' + e.id + '" onclick="showDrillModal(this.dataset.eid)">Voir</button></td></tr>';
+    }).join('');
+    h += '</tbody></table></div>';
+  }
+  // Dernières évaluations
+  h += '<div class="card"><div class="card-title">10 dernieres evaluations enregistrees</div>';
+  h += '<table class="tbl"><thead><tr><th>Conseiller</th><th>RDV</th><th>Type</th><th>Manager</th><th>Date</th><th>Score</th><th>Actions</th></tr></thead><tbody>';
+  h += last10.map(function(e) {
+    var c = _st.conseillers.find(function(x) { return x.id === e.cons_id; });
+    var l = lv(e.score_global);
+    return '<tr><td>' + (c ? c.name : '<span style="color:var(--crit)">SANS CONSEILLER</span>') + '</td>'
+      + '<td class="fs11">' + e.rdv + '</td>'
+      + '<td class="fs11">' + (e.eval_type || '--') + '</td>'
+      + '<td class="fs11">' + (e.manager || '--') + '</td>'
+      + '<td class="fs11 mu">' + fd(e.eval_date) + '</td>'
+      + '<td><strong style="color:' + l.c + '">' + e.score_global + '</strong></td>'
+      + '<td class="flex gap1"><button class="btn btn-o btn-sm" data-eid="' + e.id + '" onclick="showDrillModal(this.dataset.eid)">Voir</button>'
+      + '<button class="btn btn-g btn-sm" data-eid="' + e.id + '" onclick="openReassignModal(this.dataset.eid)">Corriger</button></td></tr>';
+  }).join('');
+  h += '</tbody></table></div>';
+  el.innerHTML = h;
+}
+
+// ── Historique filtrable dans la fiche ──
+function renderFicheHistorique(cid) {
+  var el = document.getElementById('fiche-content');
+  if (!el) return;
+  var c = _st.conseillers.find(function(x) { return x.id === cid; });
+  if (!c) return;
+  var allEvs = _st.evals.filter(function(e) { return e.cons_id === cid; });
+  // Filter state
+  var filterType = document.getElementById('fh-type') ? document.getElementById('fh-type').value : '';
+  var filterMgr = document.getElementById('fh-mgr') ? document.getElementById('fh-mgr').value : '';
+  var filterFrom = document.getElementById('fh-from') ? document.getElementById('fh-from').value : '';
+  var filterTo = document.getElementById('fh-to') ? document.getElementById('fh-to').value : '';
+  var filtered = allEvs.filter(function(e) {
+    if (filterType && e.eval_type !== filterType) return false;
+    if (filterMgr && e.manager !== filterMgr) return false;
+    if (filterFrom && e.eval_date < filterFrom) return false;
+    if (filterTo && e.eval_date > filterTo) return false;
+    return true;
+  }).sort(function(a,b) { return (b.eval_date||'').localeCompare(a.eval_date||''); });
+  var allMgrs = [...new Set(allEvs.map(function(e) { return e.manager; }).filter(Boolean))];
+  var h = '<div class="flex jb ac mb3"><strong style="font-size:16px">Historique complet — ' + c.name + ' (' + allEvs.length + ' evaluations)</strong>'
+    + '<button class="btn btn-g btn-sm" data-cid="' + cid + '" onclick="quickEvalFor(this.dataset.cid)">+ Nouvelle</button></div>';
+  // Filters
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:end">'
+    + '<div><label class="lbl">Type eval</label><select id="fh-type" onchange="renderFicheHistorique(\'' + cid + '\')" style="min-width:110px"><option value="">Tous</option>'
+    + ['Drill','Ecoute','Oral','Analyse RDV'].map(function(t) { return '<option value="' + t + '"' + (filterType===t?' selected':'') + '>' + t + '</option>'; }).join('')
+    + '</select></div>'
+    + '<div><label class="lbl">Manager</label><select id="fh-mgr" onchange="renderFicheHistorique(\'' + cid + '\')" style="min-width:130px"><option value="">Tous</option>'
+    + allMgrs.map(function(m) { return '<option value="' + m + '"' + (filterMgr===m?' selected':'') + '>' + m + '</option>'; }).join('')
+    + '</select></div>'
+    + '<div><label class="lbl">Du</label><input type="date" id="fh-from" value="' + filterFrom + '" onchange="renderFicheHistorique(\'' + cid + '\')" style="width:130px"></div>'
+    + '<div><label class="lbl">Au</label><input type="date" id="fh-to" value="' + filterTo + '" onchange="renderFicheHistorique(\'' + cid + '\')" style="width:130px"></div>'
+    + '<button class="btn btn-o btn-sm" onclick="document.getElementById(\'fh-type\').value=\'\';document.getElementById(\'fh-mgr\').value=\'\';document.getElementById(\'fh-from\').value=\'\';document.getElementById(\'fh-to\').value=\'\';renderFicheHistorique(\'' + cid + '\')">Reinitialiser</button>'
+    + '</div>';
+  if (!filtered.length) {
+    h += '<div class="al al-info">Aucune evaluation correspondant aux filtres.</div>';
+  } else {
+    h += '<div class="card"><table class="tbl"><thead><tr><th>Date</th><th>RDV</th><th>Type</th><th>Manager</th><th>Tech</th><th>Com</th><th>Pro</th><th>Score</th><th>Modifie</th><th>Actions</th></tr></thead><tbody>';
+    h += filtered.map(function(e) {
+      var l = lv(e.score_global);
+      var modif = e.edit_log && e.edit_log.length ? '<span style="font-size:9px;background:var(--moy-bg);color:var(--moy);border-radius:3px;padding:1px 5px">Modifie</span>' : '';
+      return '<tr>'
+        + '<td class="fs11">' + fd(e.eval_date) + '</td>'
+        + '<td class="fs11">' + (DB.rdv()[e.rdv] ? DB.rdv()[e.rdv].label : e.rdv) + '</td>'
+        + '<td class="fs11">' + (e.eval_type||'--') + '</td>'
+        + '<td class="fs11">' + (e.manager||'--') + '</td>'
+        + '<td style="color:' + sc(e.score_tech) + ';font-weight:700">' + e.score_tech + '</td>'
+        + '<td style="color:' + sc(e.score_com) + ';font-weight:700">' + e.score_com + '</td>'
+        + '<td style="color:' + sc(e.score_pro) + ';font-weight:700">' + e.score_pro + '</td>'
+        + '<td><strong style="color:' + l.c + '">' + e.score_global + '</strong> <span class="badge ' + l.cls + '" style="font-size:9px">' + l.lbl + '</span></td>'
+        + '<td>' + modif + '</td>'
+        + '<td class="flex gap1">'
+        + '<button class="btn btn-o btn-sm" data-eid="' + e.id + '" onclick="showDrillModal(this.dataset.eid)">Voir</button>'
+        + (isAdmin() ? '<button class="btn btn-g btn-sm" data-eid="' + e.id + '" onclick="openReassignModal(this.dataset.eid)">Corriger</button>' : '')
+        + '</td></tr>';
+    }).join('');
+    h += '</tbody></table></div>';
+  }
+  el.innerHTML = h;
+}
 
 </script>
 </body>
