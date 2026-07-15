@@ -377,7 +377,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 <script>
 var _sb=supabase.createClient('https://bkrzqitbzedmuwvuqxth.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrcnpxaXRiemVkbXV3dnVxeHRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNzQ5MDYsImV4cCI6MjA5NDk1MDkwNn0.uTimyUG9_q-MiErZ3wjYOU0Xl4Vzj1ZkVg4i5X6_qBY');
 var _ANT='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';
-var _st={conseillers:[],evals:[],managers:[],planning:[],rh:[],suivi:[],suggestions:[]};
+var _st={conseillers:[],evals:[],managers:[],planning:[],rh:[],suivi:[],suggestions:[],analyses:[]};
 var _role=null; // 'admin','manager','conseiller'
 var _conseillerSession=null; // {id, name} when role=conseiller
 var _sbBlocs=null,_sbWeights=null,_sbObjs=null;
@@ -412,6 +412,7 @@ async function sbLoad(){
     var rhR=await _sb.from('rh_entries').select('*').order('created_at',{ascending:false});if(!rhR.error)_st.rh=rhR.data||[];
     var svR=await _sb.from('suivi_managerial').select('*').order('created_at',{ascending:false});if(!svR.error)_st.suivi=svR.data||[];
     var sugR=await _sb.from('objections_suggestions').select('*').order('created_at',{ascending:false});if(!sugR.error)_st.suggestions=sugR.data||[];
+    var anR=await _sb.from('analyses_junior').select('*').order('created_at',{ascending:false});if(!anR.error)_st.analyses=anR.data||[];
     var dot=document.getElementById('sync-dot');if(dot)dot.style.display='block';
     return true;
   }catch(e){console.error('Supabase:',e);return false;}
@@ -787,7 +788,7 @@ function openFiche(cid){
   // Build tabs
   var tabsEl=document.getElementById('fiche-tabs');
   tabsEl.innerHTML='';
-  var tabs=[{id:'eval',lbl:'Evaluations'},{id:'planning',lbl:'Planning'},{id:'suivi',lbl:'Suivi'},{id:'rh',lbl:'Evolution'},{id:'historique',lbl:'Historique complet'}];
+  var tabs=[{id:'eval',lbl:'Evaluations'},{id:'planning',lbl:'Planning'},{id:'suivi',lbl:'Suivi'},{id:'rh',lbl:'Evolution'},{id:'analyses',lbl:'Analyses de RDV'},{id:'historique',lbl:'Historique complet'}];
   tabs.forEach(function(tab,i){
     var btn=document.createElement('button');
     btn.className='seg-b'+(i===0?' on':'');
@@ -805,7 +806,7 @@ function showFicheTab(tab,btn){
   document.getElementById('fiche-planning-content').style.display='none';
   document.getElementById('fiche-suivi-content').style.display='none';
   document.getElementById('fiche-rh-content').style.display='none';
-  var map={eval:'fiche-content',planning:'fiche-planning-content',suivi:'fiche-suivi-content',rh:'fiche-rh-content',historique:'fiche-content'};
+  var map={eval:'fiche-content',planning:'fiche-planning-content',suivi:'fiche-suivi-content',rh:'fiche-rh-content',analyses:'fiche-suivi-content',historique:'fiche-content'};
   document.getElementById(map[tab]).style.display='block';
   document.querySelectorAll('#fiche-tabs .seg-b').forEach(function(b){b.classList.remove('on');});
   if(btn)btn.classList.add('on');
@@ -814,6 +815,7 @@ function showFicheTab(tab,btn){
   if(tab==='suivi')openSuiviManagerial(cid);
   if(tab==='planning')renderFichePlanning(cid);
   if(tab==='historique')renderFicheHistorique(cid);
+  if(tab==='analyses')renderFicheAnalyses(cid);
 }
 function renderFicheEval(cid){
   var c=_st.conseillers.find(function(x){return x.id===cid;});if(!c)return;
@@ -1491,6 +1493,17 @@ function renderMgrSettings(){
       +'</div>';
   }).join('');
   html+='<div class="flex gap1 mt2"><input type="text" id="mgr-new" placeholder="Nom du manager" style="flex:1"><button class="btn btn-g btn-sm" onclick="addMgrSettings()">Ajouter</button></div></div>';
+  html+='<div class="card mb2"><div class="card-title">Conseillers seniors observables</div>'
+    +'<div class="fs11 mu mb2">Cochez les conseillers que les juniors peuvent observer et analyser.</div>'
+    +_st.conseillers.filter(function(c){return c.active!==false;}).map(function(c){
+      var isObs=c.observable===true;
+      return '<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin:4px 0">'
+        +'<input type="checkbox"'+(isObs?' checked':'')+' style="width:13px;height:13px;margin:0;accent-color:var(--g)"'
+        +' data-cid="'+c.id+'" onchange="toggleObservable(this.dataset.cid,this.checked)">'+c.name
+        +(isObs?' <span style="font-size:9px;background:var(--tb-bg);color:var(--tb);border-radius:3px;padding:1px 5px">Observable</span>':'')
+        +'</label>';
+    }).join('')
+    +'</div>';
   html+='<div class="card"><div class="card-title">Niveaux de performance</div>'+[{lbl:'Elite',min:87,max:100,cls:'lv-elite'},{lbl:'Tres bon',min:75,max:86,cls:'lv-tb'},{lbl:'Bon',min:62,max:74,cls:'lv-bon'},{lbl:'Moyen',min:48,max:61,cls:'lv-moy'},{lbl:'Faible',min:30,max:47,cls:'lv-fai'},{lbl:'Critique',min:0,max:29,cls:'lv-crit'}].map(function(l){return'<div class="flex ac gap2 mb1"><span class="badge '+l.cls+'" style="min-width:60px;justify-content:center">'+l.lbl+'</span><div style="flex:1;height:4px;background:var(--bd);border-radius:2px;overflow:hidden"><div style="width:'+l.max+'%;height:100%;background:var(--g);border-radius:2px"></div></div><span class="fs11 mu">'+l.min+'-'+l.max+'</span></div>';}).join('')+'</div></div>';
   document.getElementById('stab-managers').innerHTML=html;
 }
@@ -2157,6 +2170,13 @@ function renderConseillerDash(cid,panel){
     +'<button onclick="showConsPwdModal()" style="padding:5px 12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#fff;font-size:11px;cursor:pointer;font-family:inherit">Mot de passe</button>'
     +'<button onclick="logoutConseiller()" style="padding:5px 12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#fff;font-size:11px;cursor:pointer;font-family:inherit">Deconnexion</button>'
     +'</div></div>'
+    // Tab bar
+    +'<div style="max-width:900px;margin:0 auto;padding:16px 16px 0;display:flex;gap:4px">'
+    +'<button id="cons-tab-dash" class="seg-b on" onclick="switchConsTab(&#39;dash&#39;)">Mon suivi</button>'
+    +'<button id="cons-tab-assistant" class="seg-b" onclick="switchConsTab(&#39;assistant&#39;)">Analyses de RDV</button>'
+    +'</div>'
+    +'<div id="cons-assistant-content" style="max-width:900px;margin:0 auto;padding:24px 16px;display:none"></div>'
+    +'<div id="cons-dash-content">'
     +'<div style="max-width:900px;margin:0 auto;padding:24px 16px">'
     // Profile card
     +'<div style="background:#fff;border:1px solid var(--bd);border-radius:12px;padding:20px;margin-bottom:16px;display:flex;align-items:center;gap:20px">'
@@ -2193,7 +2213,7 @@ function renderConseillerDash(cid,panel){
         +'<span style="font-size:10px;color:#7C3AED">P:'+e.score_pro+'</span>'
         +'</div></div></div>';
     }).join('')||'<div style="color:var(--mu);text-align:center;padding:20px">Aucune evaluation.</div>')
-    +'</div></div>';
+    +'</div></div></div>';
   // Render chart
   setTimeout(function(){
     var el=document.getElementById('cv-cons');if(!el||!evs.length)return;
@@ -2290,6 +2310,267 @@ async function toggleManagerActive(mgrName,active){
   if(res.error){toast('Erreur: '+res.error.message,false);return;}
   await sbLoad();renderMgrSettings();
   toast(active?'Manager reactive':'Manager desactive',true);
+}
+
+
+// ══ MODULE ASSISTANT (analyses de RDV par conseillers juniors) ══
+var GRILLE_SECTIONS=[
+  {id:'consultant',titre:'Analyse du consultant',questions:[
+    {id:'q_fait_different',lbl:'Qu&#39;a fait le consultant que tu ne fais pas encore ?'},
+    {id:'q_bien_fait',lbl:'Qu&#39;a-t-il fait particulierement bien ?'},
+    {id:'q_autrement',lbl:'Qu&#39;aurais-tu fait differemment ?'}
+  ]},
+  {id:'communication',titre:'Communication',questions:[
+    {id:'q_question',lbl:'La question la plus marquante'},
+    {id:'q_argument',lbl:'L&#39;argument le plus marquant'},
+    {id:'q_reformulation',lbl:'La reformulation la plus marquante'}
+  ]},
+  {id:'client',titre:'Gestion du client',questions:[
+    {id:'q_confiance',lbl:'Comment a-t-il cree la confiance ?'},
+    {id:'q_objections',lbl:'Comment a-t-il gere les objections ?'},
+    {id:'q_adhesion',lbl:'Comment a-t-il obtenu l&#39;adhesion ?'}
+  ]},
+  {id:'application',titre:'Application personnelle',questions:[
+    {id:'q_reutiliser',lbl:'3 points a reutiliser dans tes prochains RDV'},
+    {id:'q_axe',lbl:'Ton axe d&#39;amelioration principal'}
+  ]}
+];
+
+function renderAssistantTab(cid,container){
+  var analyses=(_st.analyses||[]).filter(function(a){return a.junior_id===cid;});
+  var el=document.createElement('div');
+  var hdr=document.createElement('div');hdr.className='flex jb ac mb3';
+  hdr.innerHTML='<div style="font-size:16px;font-weight:700;color:var(--n)">Mes analyses de RDV</div>';
+  var newBtn=document.createElement('button');newBtn.className='btn btn-g btn-sm';
+  newBtn.textContent='+ Nouvelle analyse';newBtn.dataset.cid=cid;
+  newBtn.onclick=function(){openAnalyseJuniorForm(this.dataset.cid,null);};
+  hdr.appendChild(newBtn);el.appendChild(hdr);
+  if(!analyses.length){
+    var empty=document.createElement('div');empty.className='card';
+    empty.style.cssText='text-align:center;padding:30px;color:var(--mu)';
+    empty.innerHTML='Aucune analyse pour le moment.<br><span style="font-size:11px">Observe un RDV d&#39;un conseiller senior et remplis ta premiere grille d&#39;analyse.</span>';
+    el.appendChild(empty);
+  }else{
+    analyses.forEach(function(a){
+      var senior=_st.conseillers.find(function(c){return c.id===a.senior_id;});
+      var card=document.createElement('div');card.className='card mb2';
+      var noteHtml=a.note!==null&&a.note!==undefined?'<div style="text-align:center;flex-shrink:0"><div style="font-size:24px;font-weight:700;color:'+sc(a.note*10)+'">'+a.note+'</div><div class="fs10 mu">/10</div></div>':'';
+      var chdr=document.createElement('div');chdr.className='flex jb ac mb2';
+      chdr.innerHTML='<div class="flex ac gap2"><span style="font-size:18px">&#128064;</span>'
+        +'<div><strong style="font-size:14px">RDV observe : '+(senior?senior.name:'?')+'</strong>'
+        +'<div class="fs11 mu">'+(DB.rdv()[a.rdv_type]?DB.rdv()[a.rdv_type].label:a.rdv_type||'')+' — '+fd(a.rdv_date)+(a.dossier?' — Dossier : '+a.dossier:'')+'</div></div></div>';
+      var right=document.createElement('div');right.className='flex ac gap2';
+      right.innerHTML=noteHtml;
+      var editBtn=document.createElement('button');editBtn.className='btn btn-o btn-sm';editBtn.textContent='Modifier';
+      editBtn.dataset.aid=a.id;editBtn.dataset.cid=cid;
+      editBtn.onclick=function(){openAnalyseJuniorForm(this.dataset.cid,this.dataset.aid);};
+      right.appendChild(editBtn);
+      var delBtn=document.createElement('button');delBtn.className='btn btn-r btn-sm';delBtn.textContent='X';
+      delBtn.dataset.aid=a.id;delBtn.dataset.cid=cid;
+      delBtn.onclick=function(){deleteAnalyseJunior(this.dataset.aid,this.dataset.cid);};
+      right.appendChild(delBtn);
+      chdr.appendChild(right);card.appendChild(chdr);
+      var body=document.createElement('div');
+      var bh='';
+      if(a.commentaire_general)bh+='<div class="fs12 mb2" style="background:var(--gp);padding:8px;border-radius:var(--r)">'+a.commentaire_general+'</div>';
+      var grille=a.grille||{};
+      GRILLE_SECTIONS.forEach(function(sec){
+        var hasContent=sec.questions.some(function(q){return grille[q.id];});
+        if(!hasContent)return;
+        bh+='<div style="font-size:9px;text-transform:uppercase;color:var(--g);font-weight:700;margin:10px 0 5px;border-bottom:1px solid var(--gl);padding-bottom:3px">'+sec.titre+'</div>';
+        sec.questions.forEach(function(q){
+          if(grille[q.id])bh+='<div class="mb1"><span class="fs10 bold mu">'+q.lbl+' : </span><span class="fs12">'+grille[q.id]+'</span></div>';
+        });
+      });
+      if(a.commentaire_manager){
+        bh+='<div style="margin-top:10px;padding:10px;background:var(--bon-bg);border-left:3px solid var(--bon);border-radius:0 var(--r) var(--r) 0">'
+          +'<div class="fs10 bold" style="color:var(--bon);margin-bottom:3px">Commentaire de '+(a.manager_commentaire_by||'votre manager')+'</div>'
+          +'<div class="fs12">'+a.commentaire_manager+'</div></div>';
+      }
+      body.innerHTML=bh;card.appendChild(body);el.appendChild(card);
+    });
+  }
+  container.innerHTML='';container.appendChild(el);
+}
+
+function openAnalyseJuniorForm(cid,analyseId){
+  var existing=analyseId?(_st.analyses||[]).find(function(a){return a.id===analyseId;}):null;
+  var grille=existing?existing.grille||{}:{};
+  var observables=_st.conseillers.filter(function(c){return c.observable===true&&c.id!==cid&&c.active!==false;});
+  var overlay=document.createElement('div');
+  overlay.id='mod-analyse-junior';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:600;display:flex;align-items:center;justify-content:center';
+  var box=document.createElement('div');
+  box.style.cssText='background:#fff;border-radius:12px;padding:24px;width:640px;max-width:96vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)';
+  var h='<div style="font-size:16px;font-weight:700;color:var(--n);margin-bottom:16px">'+(existing?'Modifier l&#39;analyse':'Nouvelle analyse de RDV')+'</div>';
+  h+='<input type="hidden" id="aj-id" value="'+(analyseId||'')+'"><input type="hidden" id="aj-cid" value="'+cid+'">';
+  h+='<div class="g2 gap2 mb2">';
+  h+='<div><label class="lbl">Conseiller observe *</label><select id="aj-senior" style="width:100%">';
+  h+='<option value="">— Selectionnez —</option>';
+  h+=observables.map(function(c){return'<option value="'+c.id+'"'+(existing&&existing.senior_id===c.id?' selected':'')+'>'+c.name+'</option>';}).join('');
+  h+='</select></div>';
+  h+='<div><label class="lbl">Type de RDV *</label><select id="aj-rdv" style="width:100%">';
+  h+=['phoning','d0','d1scpi','d1asset','d1pe','d2'].map(function(r){var lbl={phoning:'Phoning',d0:'D0 Etude',d1scpi:'D1 SCPI',d1asset:'D1 Asset',d1pe:'D1 PE',d2:'D2 Closing'};return'<option value="'+r+'"'+(existing&&existing.rdv_type===r?' selected':'')+'>'+lbl[r]+'</option>';}).join('');
+  h+='</select></div></div>';
+  h+='<div class="g2 gap2 mb2">';
+  h+='<div><label class="lbl">Date du RDV *</label><input type="date" id="aj-date" value="'+(existing&&existing.rdv_date?existing.rdv_date:new Date().toISOString().split('T')[0])+'" style="width:100%"></div>';
+  h+='<div><label class="lbl">Dossier (facultatif)</label><input type="text" id="aj-dossier" value="'+(existing&&existing.dossier?existing.dossier:'')+'" placeholder="Nom du client / dossier" style="width:100%"></div>';
+  h+='</div>';
+  h+='<div class="mb2"><label class="lbl">Commentaire general (facultatif)</label><textarea id="aj-comment" rows="2" style="width:100%;resize:vertical">'+(existing&&existing.commentaire_general?existing.commentaire_general:'')+'</textarea></div>';
+  GRILLE_SECTIONS.forEach(function(sec){
+    h+='<div style="font-size:11px;text-transform:uppercase;color:var(--g);font-weight:700;margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--gl)">'+sec.titre+'</div>';
+    sec.questions.forEach(function(q){
+      h+='<div class="mb2"><label class="lbl">'+q.lbl+'</label><textarea id="aj-'+q.id+'" rows="2" style="width:100%;resize:vertical">'+(grille[q.id]||'')+'</textarea></div>';
+    });
+  });
+  h+='<div class="mb3"><label class="lbl">Note du RDV observe (sur 10)</label><input type="number" id="aj-note" min="0" max="10" value="'+(existing&&existing.note!==null&&existing.note!==undefined?existing.note:'')+'" style="width:100px"></div>';
+  h+='<div style="display:flex;gap:10px">'
+    +'<button id="aj-save" style="flex:1;padding:12px;background:var(--g);color:var(--n);border:none;border-radius:var(--r);font-weight:700;cursor:pointer;font-family:inherit">Enregistrer</button>'
+    +'<button id="aj-cancel" style="padding:12px 18px;border:1px solid var(--bd);background:var(--ow);border-radius:var(--r);cursor:pointer;font-family:inherit">Annuler</button>'
+    +'</div>';
+  box.innerHTML=h;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  document.getElementById('aj-cancel').onclick=function(){document.body.removeChild(overlay);};
+  document.getElementById('aj-save').onclick=function(){saveAnalyseJunior();};
+}
+
+async function saveAnalyseJunior(){
+  var aid=document.getElementById('aj-id').value;
+  var cid=document.getElementById('aj-cid').value;
+  var seniorId=document.getElementById('aj-senior').value;
+  var rdvType=document.getElementById('aj-rdv').value;
+  var rdvDate=document.getElementById('aj-date').value;
+  if(!seniorId){alert('Selectionnez le conseiller observe.');return;}
+  if(!rdvDate){alert('La date est obligatoire.');return;}
+  var grille={};
+  GRILLE_SECTIONS.forEach(function(sec){sec.questions.forEach(function(q){
+    var el=document.getElementById('aj-'+q.id);if(el&&el.value.trim())grille[q.id]=el.value.trim();
+  });});
+  var noteEl=document.getElementById('aj-note');
+  var note=noteEl&&noteEl.value!==''?parseInt(noteEl.value):null;
+  if(note!==null&&(note<0||note>10)){alert('La note doit etre entre 0 et 10.');return;}
+  var payload={
+    junior_id:cid,senior_id:seniorId,rdv_type:rdvType,rdv_date:rdvDate,
+    dossier:document.getElementById('aj-dossier').value.trim()||null,
+    commentaire_general:document.getElementById('aj-comment').value.trim()||null,
+    grille:grille,note:note,updated_at:new Date().toISOString()
+  };
+  var res=aid?await _sb.from('analyses_junior').update(payload).eq('id',aid):await _sb.from('analyses_junior').insert(payload);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  var overlay=document.getElementById('mod-analyse-junior');if(overlay)document.body.removeChild(overlay);
+  await sbLoad();
+  // Refresh conseiller view
+  var tabContent=document.getElementById('cons-assistant-content');
+  if(tabContent)renderAssistantTab(cid,tabContent);
+  toast('Analyse enregistree',true);
+}
+
+async function deleteAnalyseJunior(aid,cid){
+  if(!confirm('Supprimer cette analyse ?'))return;
+  var res=await _sb.from('analyses_junior').delete().eq('id',aid);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();
+  var tabContent=document.getElementById('cons-assistant-content');
+  if(tabContent)renderAssistantTab(cid,tabContent);
+  toast('Analyse supprimee',true);
+}
+
+function switchConsTab(tab){
+  var dashC=document.getElementById('cons-dash-content');
+  var asstC=document.getElementById('cons-assistant-content');
+  var dashB=document.getElementById('cons-tab-dash');
+  var asstB=document.getElementById('cons-tab-assistant');
+  if(!dashC||!asstC)return;
+  if(tab==='dash'){
+    dashC.style.display='block';asstC.style.display='none';
+    if(dashB)dashB.classList.add('on');if(asstB)asstB.classList.remove('on');
+  }else{
+    dashC.style.display='none';asstC.style.display='block';
+    if(dashB)dashB.classList.remove('on');if(asstB)asstB.classList.add('on');
+    if(_conseillerSession)renderAssistantTab(_conseillerSession.id,asstC);
+  }
+}
+
+async function toggleObservable(cid,checked){
+  var res=await _sb.from('conseillers').update({observable:checked}).eq('id',cid);
+  if(res.error){toast('Erreur: '+res.error.message,false);return;}
+  var cons=_st.conseillers.find(function(c){return c.id===cid;});
+  if(cons)cons.observable=checked;
+  toast(checked?'Conseiller observable':'Conseiller retire des observables',true);
+  renderMgrSettings();
+}
+
+function renderFicheAnalyses(cid){
+  var c=_st.conseillers.find(function(x){return x.id===cid;});if(!c)return;
+  var analyses=(_st.analyses||[]).filter(function(a){return a.junior_id===cid;});
+  var el=document.getElementById('fiche-suivi-content');if(!el)return;
+  var container=document.createElement('div');
+  var hdr=document.createElement('div');hdr.className='flex jb ac mb3';
+  hdr.innerHTML='<div style="font-size:16px;font-weight:700;color:var(--n)">Analyses de RDV — '+c.name+'</div>'
+    +'<span class="fs11 mu">'+analyses.length+' analyse'+(analyses.length>1?'s':'')+'</span>';
+  container.appendChild(hdr);
+  if(!analyses.length){
+    var empty=document.createElement('div');empty.className='card';
+    empty.style.cssText='text-align:center;padding:30px;color:var(--mu)';
+    empty.textContent='Aucune analyse redigee par ce conseiller.';
+    container.appendChild(empty);
+  }else{
+    analyses.forEach(function(a){
+      var senior=_st.conseillers.find(function(x){return x.id===a.senior_id;});
+      var card=document.createElement('div');card.className='card mb2';
+      var noteHtml=a.note!==null&&a.note!==undefined?'<div style="text-align:center"><div style="font-size:22px;font-weight:700;color:'+sc(a.note*10)+'">'+a.note+'</div><div class="fs10 mu">/10</div></div>':'';
+      var chdr=document.createElement('div');chdr.className='flex jb ac mb2';
+      chdr.innerHTML='<div><strong style="font-size:14px">RDV observe : '+(senior?senior.name:'?')+'</strong>'
+        +'<div class="fs11 mu">'+(DB.rdv()[a.rdv_type]?DB.rdv()[a.rdv_type].label:a.rdv_type||'')+' — '+fd(a.rdv_date)+(a.dossier?' — '+a.dossier:'')+' — redige le '+fd(a.created_at)+'</div></div>';
+      var hdrRight=document.createElement('div');hdrRight.innerHTML=noteHtml;
+      chdr.appendChild(hdrRight);card.appendChild(chdr);
+      var body=document.createElement('div');
+      var bh='';
+      if(a.commentaire_general)bh+='<div class="fs12 mb2" style="background:var(--gp);padding:8px;border-radius:var(--r)">'+a.commentaire_general+'</div>';
+      var grille=a.grille||{};
+      GRILLE_SECTIONS.forEach(function(sec){
+        var hasContent=sec.questions.some(function(q){return grille[q.id];});
+        if(!hasContent)return;
+        bh+='<div style="font-size:9px;text-transform:uppercase;color:var(--g);font-weight:700;margin:10px 0 5px;border-bottom:1px solid var(--gl);padding-bottom:3px">'+sec.titre+'</div>';
+        sec.questions.forEach(function(q){
+          if(grille[q.id])bh+='<div class="mb1"><span class="fs10 bold mu">'+q.lbl+' : </span><span class="fs12">'+grille[q.id]+'</span></div>';
+        });
+      });
+      body.innerHTML=bh;card.appendChild(body);
+      // Manager comment section
+      var cmtDiv=document.createElement('div');
+      cmtDiv.style.cssText='margin-top:12px;padding-top:12px;border-top:1px solid var(--bd)';
+      if(a.commentaire_manager){
+        cmtDiv.innerHTML='<div style="padding:10px;background:var(--bon-bg);border-left:3px solid var(--bon);border-radius:0 var(--r) var(--r) 0;margin-bottom:8px">'
+          +'<div class="fs10 bold" style="color:var(--bon);margin-bottom:3px">Commentaire de '+(a.manager_commentaire_by||'manager')+'</div>'
+          +'<div class="fs12">'+a.commentaire_manager+'</div></div>';
+      }
+      var cmtForm=document.createElement('div');cmtForm.className='flex gap1';
+      var cmtInput=document.createElement('input');
+      cmtInput.type='text';cmtInput.placeholder=a.commentaire_manager?'Modifier le commentaire...':'Ajouter un commentaire...';
+      cmtInput.style.cssText='flex:1;font-size:12px';cmtInput.id='mgr-cmt-'+a.id;
+      var cmtBtn=document.createElement('button');cmtBtn.className='btn btn-n btn-sm';cmtBtn.textContent='Commenter';
+      cmtBtn.dataset.aid=a.id;cmtBtn.dataset.cid=cid;
+      cmtBtn.onclick=function(){saveManagerComment(this.dataset.aid,this.dataset.cid);};
+      cmtForm.appendChild(cmtInput);cmtForm.appendChild(cmtBtn);
+      cmtDiv.appendChild(cmtForm);card.appendChild(cmtDiv);
+      container.appendChild(card);
+    });
+  }
+  el.innerHTML='';el.appendChild(container);
+  el.style.display='block';
+}
+async function saveManagerComment(aid,cid){
+  var input=document.getElementById('mgr-cmt-'+aid);
+  if(!input||!input.value.trim()){alert('Ecrivez un commentaire.');return;}
+  var res=await _sb.from('analyses_junior').update({
+    commentaire_manager:input.value.trim(),
+    manager_commentaire_by:_curMgr()||'Manager',
+    updated_at:new Date().toISOString()
+  }).eq('id',aid);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();renderFicheAnalyses(cid);toast('Commentaire enregistre',true);
 }
 </script>
 </body>
