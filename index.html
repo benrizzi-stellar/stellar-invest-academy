@@ -1493,13 +1493,24 @@ function renderMgrSettings(){
       +'</div>';
   }).join('');
   html+='<div class="flex gap1 mt2"><input type="text" id="mgr-new" placeholder="Nom du manager" style="flex:1"><button class="btn btn-g btn-sm" onclick="addMgrSettings()">Ajouter</button></div></div>';
-  html+='<div class="card mb2"><div class="card-title">Conseillers seniors observables</div>'
-    +'<div class="fs11 mu mb2">Cochez les conseillers que les juniors peuvent observer et analyser.</div>'
+  html+='<div class="card mb2"><div class="card-title">Seniors observables</div>'
+    +'<div class="fs11 mu mb2">Cochez les conseillers et managers que les juniors peuvent observer et analyser.</div>'
+    +'<div class="fs10 bold" style="color:var(--g);text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">Conseillers</div>'
     +_st.conseillers.filter(function(c){return c.active!==false;}).map(function(c){
       var isObs=c.observable===true;
       return '<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin:4px 0">'
         +'<input type="checkbox"'+(isObs?' checked':'')+' style="width:13px;height:13px;margin:0;accent-color:var(--g)"'
         +' data-cid="'+c.id+'" onchange="toggleObservable(this.dataset.cid,this.checked)">'+c.name
+        +(isObs?' <span style="font-size:9px;background:var(--tb-bg);color:var(--tb);border-radius:3px;padding:1px 5px">Observable</span>':'')
+        +'</label>';
+    }).join('')
+    +'<div class="fs10 bold" style="color:var(--g);text-transform:uppercase;letter-spacing:1px;margin:12px 0 4px">Managers</div>'
+    +_st.managers.filter(function(m){return m.active!==false&&m.name!==ADMIN;}).map(function(m){
+      var isObs=m.observable===true;
+      return '<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin:4px 0">'
+        +'<input type="checkbox"'+(isObs?' checked':'')+' style="width:13px;height:13px;margin:0;accent-color:var(--g)"'
+        +' data-mid="'+m.id+'" onchange="toggleObservableMgr(this.dataset.mid,this.checked)">'+m.name
+        +' <span style="font-size:9px;background:var(--bon-bg);color:var(--bon);border-radius:3px;padding:1px 5px">Manager</span>'
         +(isObs?' <span style="font-size:9px;background:var(--tb-bg);color:var(--tb);border-radius:3px;padding:1px 5px">Observable</span>':'')
         +'</label>';
     }).join('')
@@ -1993,6 +2004,14 @@ function renderControlAdmin() {
   // 5. Dernières 10 évaluations
   var last10 = [].concat(evals).sort(function(a,b) { return (b.eval_date||'').localeCompare(a.eval_date||''); }).slice(0, 10);
   var h = '<div style="font-size:18px;font-weight:700;color:var(--n);margin-bottom:20px">Tableau de controle</div>';
+  // Detect duplicate conseillers (same name)
+  var nameCount = {};
+  _st.conseillers.forEach(function(c) {
+    var key = c.name.trim().toLowerCase();
+    if (!nameCount[key]) nameCount[key] = [];
+    nameCount[key].push(c);
+  });
+  var dupCons = Object.keys(nameCount).filter(function(k) { return nameCount[k].length > 1; }).map(function(k) { return nameCount[k]; });
   // KPIs
   h += '<div class="g4 mb3">'
     + kpiBox('Total evaluations', evals.length, 'dans Supabase', false)
@@ -2000,6 +2019,25 @@ function renderControlAdmin() {
     + kpiBox('Sans manager', nomgr.length, 'a corriger', nomgr.length > 0)
     + kpiBox('Doublons potentiels', dupes.length, 'a verifier', dupes.length > 0)
     + '</div>';
+  // Duplicate conseillers section
+  if (dupCons.length) {
+    h += '<div class="card mb3"><div class="card-title" style="color:var(--crit)">Fiches conseillers en double (' + dupCons.length + ')</div>';
+    h += '<div class="fs11 mu mb2">La fusion transfere toutes les donnees (evaluations, planning, suivis, analyses) vers la fiche conservee, puis supprime le doublon.</div>';
+    dupCons.forEach(function(group) {
+      h += '<div style="padding:10px;border:1px solid var(--crit);border-radius:var(--r);margin-bottom:8px;background:var(--crit-bg)">';
+      h += '<div class="fs12 bold mb1">' + group[0].name + ' — ' + group.length + ' fiches</div>';
+      group.forEach(function(c) {
+        var nbEvals = _st.evals.filter(function(e) { return e.cons_id === c.id; }).length;
+        var nbPlan = (_st.planning||[]).filter(function(p) { return p.cons_id === c.id; }).length;
+        h += '<div class="flex ac gap2" style="padding:6px 0;border-bottom:1px solid rgba(0,0,0,.06)">'
+          + '<span class="fs11 f1">' + c.name + ' <span class="mu">(' + nbEvals + ' evals, ' + nbPlan + ' planif.' + (c.pwd ? ', mdp defini' : '') + (c.date_entree ? ', entree ' + fd(c.date_entree) : '') + ')</span></span>'
+          + '<button class="btn btn-g btn-sm" data-keep="' + c.id + '" data-name="' + c.name + '" onclick="mergeConsDuplicates(this.dataset.keep,this.dataset.name)">Conserver celle-ci</button>'
+          + '</div>';
+      });
+      h += '</div>';
+    });
+    h += '</div>';
+  }
   // Anomalies
   if (nocons.length || nomgr.length || dupes.length) {
     h += '<div class="card mb3"><div class="card-title" style="color:var(--crit)">Anomalies detectees</div>';
@@ -2352,12 +2390,12 @@ function renderAssistantTab(cid,container){
     el.appendChild(empty);
   }else{
     analyses.forEach(function(a){
-      var senior=_st.conseillers.find(function(c){return c.id===a.senior_id;});
+      var seniorNm=seniorName(a.senior_id);
       var card=document.createElement('div');card.className='card mb2';
       var noteHtml=a.note!==null&&a.note!==undefined?'<div style="text-align:center;flex-shrink:0"><div style="font-size:24px;font-weight:700;color:'+sc(a.note*10)+'">'+a.note+'</div><div class="fs10 mu">/10</div></div>':'';
       var chdr=document.createElement('div');chdr.className='flex jb ac mb2';
       chdr.innerHTML='<div class="flex ac gap2"><span style="font-size:18px">&#128064;</span>'
-        +'<div><strong style="font-size:14px">RDV observe : '+(senior?senior.name:'?')+'</strong>'
+        +'<div><strong style="font-size:14px">RDV observe : '+seniorNm+'</strong>'
         +'<div class="fs11 mu">'+(DB.rdv()[a.rdv_type]?DB.rdv()[a.rdv_type].label:a.rdv_type||'')+' — '+fd(a.rdv_date)+(a.dossier?' — Dossier : '+a.dossier:'')+'</div></div></div>';
       var right=document.createElement('div');right.className='flex ac gap2';
       right.innerHTML=noteHtml;
@@ -2396,7 +2434,7 @@ function renderAssistantTab(cid,container){
 function openAnalyseJuniorForm(cid,analyseId){
   var existing=analyseId?(_st.analyses||[]).find(function(a){return a.id===analyseId;}):null;
   var grille=existing?existing.grille||{}:{};
-  var observables=_st.conseillers.filter(function(c){return c.observable===true&&c.id!==cid&&c.active!==false;});
+  var observables=getObservablesList(cid);
   var overlay=document.createElement('div');
   overlay.id='mod-analyse-junior';
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:600;display:flex;align-items:center;justify-content:center';
@@ -2517,11 +2555,11 @@ function renderFicheAnalyses(cid){
     container.appendChild(empty);
   }else{
     analyses.forEach(function(a){
-      var senior=_st.conseillers.find(function(x){return x.id===a.senior_id;});
+      var seniorNm=seniorName(a.senior_id);
       var card=document.createElement('div');card.className='card mb2';
       var noteHtml=a.note!==null&&a.note!==undefined?'<div style="text-align:center"><div style="font-size:22px;font-weight:700;color:'+sc(a.note*10)+'">'+a.note+'</div><div class="fs10 mu">/10</div></div>':'';
       var chdr=document.createElement('div');chdr.className='flex jb ac mb2';
-      chdr.innerHTML='<div><strong style="font-size:14px">RDV observe : '+(senior?senior.name:'?')+'</strong>'
+      chdr.innerHTML='<div><strong style="font-size:14px">RDV observe : '+seniorNm+'</strong>'
         +'<div class="fs11 mu">'+(DB.rdv()[a.rdv_type]?DB.rdv()[a.rdv_type].label:a.rdv_type||'')+' — '+fd(a.rdv_date)+(a.dossier?' — '+a.dossier:'')+' — redige le '+fd(a.created_at)+'</div></div>';
       var hdrRight=document.createElement('div');hdrRight.innerHTML=noteHtml;
       chdr.appendChild(hdrRight);card.appendChild(chdr);
@@ -2571,6 +2609,67 @@ async function saveManagerComment(aid,cid){
   }).eq('id',aid);
   if(res.error){alert('Erreur: '+res.error.message);return;}
   await sbLoad();renderFicheAnalyses(cid);toast('Commentaire enregistre',true);
+}
+
+function getObservablesList(excludeCid){
+  var cons=_st.conseillers.filter(function(c){return c.observable===true&&c.id!==excludeCid&&c.active!==false;})
+    .map(function(c){return{id:c.id,name:c.name,type:'conseiller'};});
+  var mgrs=_st.managers.filter(function(m){return m.observable===true&&m.active!==false&&m.name!==ADMIN;})
+    .map(function(m){return{id:m.id,name:m.name,type:'manager'};});
+  return cons.concat(mgrs).sort(function(a,b){return a.name.localeCompare(b.name);});
+}
+function seniorName(seniorId){
+  var c=_st.conseillers.find(function(x){return x.id===seniorId;});
+  if(c)return c.name;
+  var m=_st.managers.find(function(x){return x.id===seniorId;});
+  if(m)return m.name+' (manager)';
+  return '?';
+}
+async function toggleObservableMgr(mid,checked){
+  var res=await _sb.from('managers').update({observable:checked}).eq('id',mid);
+  if(res.error){toast('Erreur: '+res.error.message,false);return;}
+  var m=_st.managers.find(function(x){return x.id===mid;});
+  if(m)m.observable=checked;
+  toast(checked?'Manager observable':'Manager retire des observables',true);
+  renderMgrSettings();
+}
+
+async function mergeConsDuplicates(keepId,name){
+  if(!isAdmin()){toast('Action reservee a l&#39;administrateur',false);return;}
+  var dups=_st.conseillers.filter(function(c){return c.name.trim().toLowerCase()===name.trim().toLowerCase()&&c.id!==keepId;});
+  if(!dups.length){toast('Aucun doublon trouve',false);return;}
+  var confirmMsg='Fusionner <strong>'+dups.length+'</strong> fiche(s) en double de <strong>'+name+'</strong> ?<br><br>'
+    +'Toutes les donnees (evaluations, planning, suivis, points evolution, analyses) seront transferees vers la fiche conservee. Les fiches en double seront supprimees.';
+  confirmAction(confirmMsg,async function(){
+    for(var i=0;i<dups.length;i++){
+      var dupId=dups[i].id;
+      // Snapshot before merge
+      await saveSnapshot('conseillers',dups[i]);
+      // Transfer all related data to keepId
+      await _sb.from('evaluations').update({cons_id:keepId}).eq('cons_id',dupId);
+      await _sb.from('planning').update({cons_id:keepId}).eq('cons_id',dupId);
+      await _sb.from('suivi_managerial').update({cons_id:keepId}).eq('cons_id',dupId);
+      await _sb.from('rh_entries').update({cons_id:keepId}).eq('cons_id',dupId);
+      await _sb.from('analyses_junior').update({junior_id:keepId}).eq('junior_id',dupId);
+      await _sb.from('analyses_junior').update({senior_id:keepId}).eq('senior_id',dupId);
+      // Update manager teams: replace dupId with keepId
+      for(var j=0;j<_st.managers.length;j++){
+        var m=_st.managers[j];
+        if(m.team&&m.team.indexOf(dupId)>=0){
+          var newTeam=m.team.filter(function(x){return x!==dupId;});
+          if(newTeam.indexOf(keepId)<0)newTeam.push(keepId);
+          await _sb.from('managers').update({team:newTeam}).eq('id',m.id);
+        }
+      }
+      // Log the merge
+      await logModification('conseillers',keepId,{merged_from:dupId,merged_name:name},dups[i]);
+      // Delete duplicate
+      await _sb.from('conseillers').delete().eq('id',dupId);
+    }
+    await sbLoad();
+    renderControlAdmin();
+    toast('Fusion terminee : '+dups.length+' doublon(s) supprime(s)',true);
+  });
 }
 </script>
 </body>
