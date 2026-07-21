@@ -1577,15 +1577,20 @@ async function analyzeTranscript(){
   var kbSection=kb?'\n\nBASE DE CONNAISSANCES DU CABINET (référentiel officiel pour ce type de RDV — compare le rendez-vous à ce référentiel):\n'+kb:'';
   var prompt='Tu es expert en formation commerciale pour un cabinet de gestion de patrimoine (Stellar Invest).\n\nAnalyse cette retranscription d&#39;un rendez-vous de type "'+blocs.label+'" realise par '+cons.name+'.\n\nBLOCS D&#39;EVALUATION:\n'+blocsList+kbSection+'\n\nRETRANSCRIPTION:\n'+text+'\n\nAnalyse en profondeur : elements bien realises, elements manquants, ecarts par rapport au script officiel, erreurs techniques, forces commerciales, posture, objections detectees et qualite de leur traitement, risques de conformite, pistes d&#39;amelioration concretes et plan d&#39;action priorise.\n\nReponds UNIQUEMENT en JSON valide:\n{"synthese":"...","points_forts":["..."],"points_faibles":["..."],"oublis":["..."],"ecarts_script":["..."],"risques_conformite":["..."],"score_tech":72,"score_com":68,"score_pro":75,"qualite_commerciale":"...","qualite_technique":"...","professionnalisme":"...","objections_detectees":["..."],"qualite_reponses_objections":"...","recommandations":["..."],"plan_action":["..."],"appreciation_globale":"..."}';
   try{
-    var resp=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:3000,messages:[{role:'user',content:prompt}]})});
+    var resp=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8000,messages:[{role:'user',content:prompt}]})});
     var data=await resp.json();
     if(data.error){
       var et=data.error.type||'unknown';
       var em=data.error.message||'Erreur inconnue';
       throw {proxyType:et,message:em};
     }
-    var raw=data.content[0].text.trim();var jsonMatch=raw.match(/\{[\s\S]*\}/);if(!jsonMatch)throw {proxyType:'parse',message:'Reponse IA invalide'};
-    var analysis=JSON.parse(jsonMatch[0]);
+    if(data.stop_reason==='max_tokens')throw {proxyType:'truncated',message:'Reponse tronquee'};
+    var raw=data.content[0].text.trim();
+    raw=raw.replace(/^\s*```(?:json)?/i,'').replace(/```\s*$/,'').trim();
+    var jsonMatch=raw.match(/\{[\s\S]*\}/);if(!jsonMatch)throw {proxyType:'parse',message:'Reponse IA invalide: '+raw.slice(0,120)};
+    var analysis;
+    try{analysis=JSON.parse(jsonMatch[0]);}
+    catch(pe){throw {proxyType:'parse',message:'JSON invalide: '+pe.message};}
     _currentAnalysis={analysis:analysis,consId:consId,rdv:rdv};
     displayAnalysis(analysis,cons.name,blocs.label);
   }catch(e){
@@ -1596,6 +1601,7 @@ async function analyzeTranscript(){
     else if(errType==='rate_limit_error'||errType==='overloaded_error'){userMsg='L&#39;API est momentanement surchargee. Reessayez dans quelques secondes.';}
     else if(errType==='invalid_request_error'&&(e.message||'').includes('token')){userMsg='La retranscription est trop longue. Reduisez le texte et relancez.';}
     else if(errType==='parse'){userMsg='La reponse IA n&#39;a pas pu etre interpretee. Relancez l&#39;analyse.';}
+    else if(errType==='truncated'){userMsg='La retranscription est tres longue et la reponse a ete tronquee. Relancez l&#39;analyse ou reduisez legerement le texte (retirez les salutations de fin par exemple).';}
     else if(errType==='network'){userMsg='Impossible de contacter le serveur. Verifiez votre connexion et que le proxy /api/analyze est bien deploye.';}
     else{userMsg=e.message||'Erreur inconnue';}
     if(!kb)userMsg+='<br><span style="font-size:11px;color:var(--mu)">Note : aucune base de connaissances n&#39;est configuree pour ce type de RDV (Parametres &rarr; Base IA).</span>';
