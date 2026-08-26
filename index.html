@@ -772,6 +772,7 @@ function renderEquipe(){
     if(col==='entree')return d*((a.c.date_entree||'').localeCompare(b.c.date_entree||''));
     if(col==='lastev')return d*((a.lastDate||'').localeCompare(b.lastDate||''));
     if(col==='avg')return d*((a.stats.avg||0)-(b.stats.avg||0));
+    if(col==='total')return d*(a.stats.total-b.stats.total);
     if(col==='drills')return d*(a.stats.drills-b.stats.drills);
     if(col==='ecoutes')return d*(a.stats.ecoutes-b.stats.ecoutes);
     if(col==='score')return d*((a.score||0)-(b.score||0));
@@ -804,13 +805,14 @@ function renderEquipe(){
     +'<th>Niveau</th>'
     +'<th style="cursor:pointer" onclick="setEqSort(&#39;lastev&#39;)">Derniere eval'+sortIcon('lastev')+'</th>'
     +'<th style="cursor:pointer" onclick="setEqSort(&#39;avg&#39;)">Moyenne'+sortIcon('avg')+'</th>'
+    +'<th style="cursor:pointer" onclick="setEqSort(&#39;total&#39;)">Total evals'+sortIcon('total')+'</th>'
     +'<th style="cursor:pointer" onclick="setEqSort(&#39;drills&#39;)">Drills'+sortIcon('drills')+'</th>'
     +'<th style="cursor:pointer" onclick="setEqSort(&#39;ecoutes&#39;)">Ecoutes'+sortIcon('ecoutes')+'</th>'
     +'<th>Statut</th>'
     +(canEdit?'<th></th>':'')
     +'</tr></thead><tbody>';
   if(!rows.length){
-    h+='<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--mu)">Aucun conseiller trouve.</td></tr>';
+    h+='<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--mu)">Aucun conseiller trouve.</td></tr>';
   }else{
     h+=rows.map(function(r){
       var c=r.c;
@@ -821,6 +823,7 @@ function renderEquipe(){
         +'<td>'+(r.level?'<span class="badge '+r.level.cls+'">'+r.level.lbl+'</span>':'<span class="fs11 mu">—</span>')+'</td>'
         +'<td class="fs11 mu">'+(r.lastDate?fd(r.lastDate):'—')+'</td>'
         +'<td>'+(r.stats.avg!==null?'<strong style="color:'+sc(r.stats.avg)+'">'+r.stats.avg+'</strong>':'—')+'</td>'
+        +'<td class="fs12">'+r.stats.total+'</td>'
         +'<td class="fs12">'+r.stats.drills+'</td>'
         +'<td class="fs12">'+r.stats.ecoutes+'</td>'
         +'<td>'+statutBadge(r.statut)+'</td>'
