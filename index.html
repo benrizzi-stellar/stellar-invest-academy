@@ -738,7 +738,7 @@ function setEqSort(col){
 function renderEquipe(){
   var canEdit=isAdmin();var conseillers=myConseillers();
   var titleEl=document.getElementById('equipe-title');
-  if(titleEl)titleEl.textContent=canEdit?'Gestion de l&#39;equipe':'Mon equipe';
+  if(titleEl)titleEl.textContent=canEdit?'Gestion equipe':'Mon equipe';
   var addBtn=document.getElementById('btn-add-cons');
   if(addBtn)addBtn.style.display=canEdit?'inline-flex':'none';
   var container=document.getElementById('team-cards');if(!container)return;
