@@ -6,10 +6,13 @@
 <title>Stellar Academy</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--g:#E2F67E;--gl:#EFF9C0;--gp:#F6FBDF;--n:#0F1824;--nm:#1A2B42;--w:#fff;--ow:#FFF4E9;--mu:#7A8CA0;--bd:#EADFD2;--tx:#1A2235;--r:8px;--rl:12px;--tb:#145F39;--tb-bg:#E6F7EF;--bon:#1A4FA0;--bon-bg:#E8F1FD;--moy:#926A00;--moy-bg:#FEF3C7;--fai:#A03A10;--fai-bg:#FFEDE0;--crit:#8B1515;--crit-bg:#FDEAEA;--elite:#92650A;--elite-bg:#FEF8E7}
-body{font-family:system-ui,sans-serif;font-size:14px;color:var(--tx);background:var(--ow);min-height:100vh}
+body{font-family:'Poppins',system-ui,sans-serif;font-size:14px;color:var(--tx);background:var(--ow);min-height:100vh}
 .topbar{background:var(--n);display:flex;align-items:center;justify-content:space-between;padding:0 18px;height:52px;position:sticky;top:0;z-index:100}
 .brand{display:flex;align-items:center;gap:10px}
 .star{width:28px;height:28px;background:var(--g);border-radius:4px;display:flex;align-items:center;justify-content:center}
@@ -2436,7 +2439,7 @@ function showConseillerView(){
     panel.id='conseiller-panel';
     document.body.insertBefore(panel,document.body.firstChild);
   }
-  panel.style.cssText='min-height:100vh;background:var(--ow);font-family:system-ui,sans-serif';
+  panel.style.cssText='min-height:100vh;background:var(--ow);font-family:inherit';
   renderConseillerDash(cid,panel);
 }
 function renderConseillerDash(cid,panel){
