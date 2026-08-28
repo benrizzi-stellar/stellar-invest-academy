@@ -1875,6 +1875,8 @@ function openSuiviManagerial(cid){
         if(content.points_forts)h2+='<div class="mb2"><span class="fs10 bold mu" style="color:var(--tb)">Points forts : </span><span class="fs12">'+content.points_forts+'</span></div>';
         if(content.points_ameliorer)h2+='<div class="mb2"><span class="fs10 bold mu" style="color:var(--moy)">A ameliorer : </span><span class="fs12">'+content.points_ameliorer+'</span></div>';
         if(content.action)h2+='<div class="mb2"><span class="fs10 bold mu">Action prioritaire : </span><span class="fs12">'+content.action+'</span></div>';
+        if(content.collecte_mois)h2+='<div class="mb2"><span class="fs10 bold mu">Collecte du mois : </span><span class="fs12">'+content.collecte_mois+'</span></div>';
+        if(content.objectif_mois_suivant)h2+='<div class="mb2"><span class="fs10 bold mu">Objectif du mois prochain : </span><span class="fs12">'+content.objectif_mois_suivant+'</span></div>';
         if(content.niveau_confiance){var nc=content.niveau_confiance;h2+='<div class="al '+(niveauCls[nc]||'al-info')+'" style="margin-top:8px">Niveau : <strong>'+nc+'</strong></div>';}
         body.innerHTML=h2||'<span class="fs12 mu">Aucun contenu.</span>';
       }
@@ -1902,6 +1904,8 @@ function openSuiviModal(type,cid,entryId){
     h+='<div class="mb2"><label class="lbl">Points forts</label><textarea id="sm-points_forts" rows="2" style="width:100%;resize:vertical">'+(content.points_forts||'')+'</textarea></div>';
     h+='<div class="mb2"><label class="lbl">Points a ameliorer</label><textarea id="sm-points_ameliorer" rows="2" style="width:100%;resize:vertical">'+(content.points_ameliorer||'')+'</textarea></div>';
     h+='<div class="mb2"><label class="lbl">Action prioritaire</label><textarea id="sm-action" rows="2" style="width:100%;resize:vertical">'+(content.action||'')+'</textarea></div>';
+    h+='<div class="mb2"><label class="lbl">Collecte du mois</label><input type="text" id="sm-collecte_mois" value="'+(content.collecte_mois||'')+'" style="width:100%"></div>';
+    h+='<div class="mb2"><label class="lbl">Objectif du mois prochain</label><input type="text" id="sm-objectif_mois_suivant" value="'+(content.objectif_mois_suivant||'')+'" style="width:100%"></div>';
     h+='<div class="mb3"><label class="lbl">Niveau de confiance</label><select id="sm-niveau" style="width:100%">'+['','Tres bon','Correct','A surveiller','Prioritaire'].map(function(n){return'<option value="'+n+'"'+(content.niveau_confiance===n?' selected':'')+'>'+n+'</option>';}).join('')+'</select></div>';
   }
   h+='<div class="flex gap2"><button class="btn btn-g f1" style="justify-content:center" onclick="saveSuivi()">Enregistrer</button><button class="btn btn-o" onclick="closeModal(\'mod-suivi\')">Annuler</button></div>';
@@ -1928,7 +1932,7 @@ async function _doSaveSuivi(){
     content.priorite=document.getElementById('sm-priorite').value;
   }else{
     var dateEl=document.getElementById('sm-date');if(dateEl)mois=dateEl.value;
-    ['resume','points_forts','points_ameliorer','action'].forEach(function(f){
+    ['resume','points_forts','points_ameliorer','action','collecte_mois','objectif_mois_suivant'].forEach(function(f){
       var el=document.getElementById('sm-'+f);if(el)content[f]=el.value.trim();
     });
     var niv=document.getElementById('sm-niveau');if(niv&&niv.value)content.niveau_confiance=niv.value;
