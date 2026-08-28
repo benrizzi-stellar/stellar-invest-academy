@@ -1679,7 +1679,10 @@ function renderBlocsEditor(){
     html+='<div class="card mb2"><div class="flex jb ac mb2"><strong>'+rl[rdv]+'</strong><input type="text" value="'+meta.label+'" style="width:200px;font-size:12px" data-rdv="'+rdv+'" onchange="updateRdvLabel(this.dataset.rdv,this.value)"></div>';
     ['tech','com','pro'].forEach(function(dim){var dl={tech:'Technique',com:'Commercial',pro:'Professionnalisme'}[dim];
       html+='<div style="font-size:9px;text-transform:uppercase;color:var(--n);font-weight:700;margin:12px 0 6px">'+dl+'</div>';
-      meta[dim].forEach(function(bloc,i){html+='<div class="flex ac gap1 mb1"><span style="color:var(--mu)">+</span><input type="text" value="'+bloc+'" style="flex:1;font-size:12px" data-rdv="'+rdv+'" data-dim="'+dim+'" data-i="'+i+'" onchange="updateBloc(this.dataset.rdv,this.dataset.dim,parseInt(this.dataset.i),this.value)"><button class="btn btn-r btn-sm" style="padding:3px 8px" data-rdv="'+rdv+'" data-dim="'+dim+'" data-i="'+i+'" onclick="removeBloc(this.dataset.rdv,this.dataset.dim,parseInt(this.dataset.i))">X</button></div>';});
+      meta[dim].forEach(function(bloc,i){html+='<div class="flex ac gap1 mb1"><span style="color:var(--mu)">+</span><input type="text" value="'+bloc+'" style="flex:1;font-size:12px" data-rdv="'+rdv+'" data-dim="'+dim+'" data-i="'+i+'" onchange="updateBloc(this.dataset.rdv,this.dataset.dim,parseInt(this.dataset.i),this.value)">'
+        +'<button class="btn btn-o btn-sm" style="padding:3px 8px" data-rdv="'+rdv+'" data-dim="'+dim+'" data-i="'+i+'"'+(i===0?' disabled':'')+' onclick="moveBloc(this.dataset.rdv,this.dataset.dim,parseInt(this.dataset.i),-1)">&uarr;</button>'
+        +'<button class="btn btn-o btn-sm" style="padding:3px 8px" data-rdv="'+rdv+'" data-dim="'+dim+'" data-i="'+i+'"'+(i===meta[dim].length-1?' disabled':'')+' onclick="moveBloc(this.dataset.rdv,this.dataset.dim,parseInt(this.dataset.i),1)">&darr;</button>'
+        +'<button class="btn btn-r btn-sm" style="padding:3px 8px" data-rdv="'+rdv+'" data-dim="'+dim+'" data-i="'+i+'" onclick="removeBloc(this.dataset.rdv,this.dataset.dim,parseInt(this.dataset.i))">X</button></div>';});
       html+='<button class="btn btn-o btn-sm" style="font-size:11px;margin-top:4px" data-rdv="'+rdv+'" data-dim="'+dim+'" onclick="addBloc(this.dataset.rdv,this.dataset.dim)">+ Ajouter</button>';
     });html+='</div>';});
   document.getElementById('stab-blocs').innerHTML=html;
@@ -1688,6 +1691,7 @@ function updateRdvLabel(rdv,v){var b=getBlocs();b[rdv].label=v;saveBlocs(b);}
 function updateBloc(rdv,dim,i,v){var b=getBlocs();b[rdv][dim][i]=v;saveBlocs(b);}
 async function removeBloc(rdv,dim,i){var b=getBlocs();b[rdv][dim].splice(i,1);await saveBlocs(b);renderBlocsEditor();}
 async function addBloc(rdv,dim){var b=getBlocs();b[rdv][dim].push('Nouveau bloc');await saveBlocs(b);renderBlocsEditor();}
+async function moveBloc(rdv,dim,i,dir){var b=getBlocs();var arr=b[rdv][dim];var j=i+dir;if(j<0||j>=arr.length)return;var tmp=arr[i];arr[i]=arr[j];arr[j]=tmp;await saveBlocs(b);renderBlocsEditor();}
 
 /*renderMgrSettings fixed*/
 function renderMgrSettings(){
