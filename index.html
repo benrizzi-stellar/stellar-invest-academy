@@ -724,7 +724,7 @@ function kpiBox(lbl,val,sub,red){return '<div class="kpi"'+(red&&val>0?' style="
   '<div class="kpi-lbl">'+lbl+'</div><div class="kpi-val">'+val+'</div><div class="kpi-sub">'+sub+'</div></div>';}
 
 // ── Equipe ──
-var _eqF={q:'',mgr:'',lv:'',st:''};
+var _eqF={q:'',mgr:'',lv:'',st:'',archived:false};
 var _eqSort={col:'name',dir:1};
 function consStats(cid){
   var evs=_st.evals.filter(function(e){return e.cons_id===cid;});
@@ -740,10 +740,12 @@ function setEqSort(col){
 }
 function renderEquipe(){
   var canEdit=isAdmin();var conseillers=myConseillers();
+  var archCount=conseillers.filter(function(c){return c.active===false;}).length;
+  conseillers=conseillers.filter(function(c){return _eqF.archived?c.active===false:c.active!==false;});
   var titleEl=document.getElementById('equipe-title');
-  if(titleEl)titleEl.textContent=canEdit?'Gestion equipe':'Mon equipe';
+  if(titleEl)titleEl.textContent=(canEdit?'Gestion equipe':'Mon equipe')+(_eqF.archived?' — Archives':'');
   var addBtn=document.getElementById('btn-add-cons');
-  if(addBtn)addBtn.style.display=canEdit?'inline-flex':'none';
+  if(addBtn)addBtn.style.display=canEdit&&!_eqF.archived?'inline-flex':'none';
   var container=document.getElementById('team-cards');if(!container)return;
   container.className='';
   // Read current filter values if inputs exist
@@ -793,6 +795,7 @@ function renderEquipe(){
     +levels.map(function(l2){return'<option value="'+l2+'"'+(_eqF.lv===l2?' selected':'')+'>'+l2+'</option>';}).join('')+'</select></div>'
     +'<div><label class="lbl">Statut</label><select id="eq-st" onchange="renderEquipe()" style="min-width:120px"><option value="">Tous</option>'
     +statuts.map(function(s2){return'<option value="'+s2.v+'"'+(_eqF.st===s2.v?' selected':'')+'>'+s2.l+'</option>';}).join('')+'</select></div>'
+    +(canEdit?'<div><button class="btn '+(_eqF.archived?'btn-n':'btn-o')+' btn-sm" onclick="toggleEqArchive()">'+(_eqF.archived?'&larr; Retour equipe':'Archives ('+archCount+')')+'</button></div>':'')
     +'</div></div>';
   // Table
   var sortIcon=function(col){return _eqSort.col===col?(_eqSort.dir>0?' &#9650;':' &#9660;'):'';};
@@ -831,8 +834,11 @@ function renderEquipe(){
         +'<td class="fs12">'+r.stats.ecoutes+'</td>'
         +'<td>'+statutBadge(r.statut)+'</td>'
         +(canEdit?'<td onclick="event.stopPropagation()"><div class="flex gap1">'
-          +'<button class="btn btn-o btn-sm" data-cid="'+c.id+'" onclick="openConsModal(this.dataset.cid)">Modifier</button>'
-          +'<button class="btn btn-r btn-sm" data-cid="'+c.id+'" onclick="delCons(this.dataset.cid)">X</button>'
+          +(_eqF.archived
+            ?'<button class="btn btn-g btn-sm" data-cid="'+c.id+'" onclick="unarchiveCons(this.dataset.cid)">Desarchiver</button>'
+             +'<button class="btn btn-r btn-sm" data-cid="'+c.id+'" onclick="delCons(this.dataset.cid)">X</button>'
+            :'<button class="btn btn-o btn-sm" data-cid="'+c.id+'" onclick="openConsModal(this.dataset.cid)">Modifier</button>'
+             +'<button class="btn btn-o btn-sm" data-cid="'+c.id+'" onclick="archiveCons(this.dataset.cid)">Archiver</button>')
           +'</div></td>':'')
         +'</tr>';
     }).join('');
@@ -868,10 +874,27 @@ async function saveCons(){
 async function delCons(id){
   if(!isAdmin()){alert('Acces refuse.');return;}
   var c=_st.conseillers.find(function(x){return x.id===id;});
-  if(!c||!confirm('Supprimer '+c.name+' ?'))return;
+  if(!c||!confirm('Supprimer definitivement '+c.name+' ? Cette action est irreversible.'))return;
   var res=await _sb.from('conseillers').delete().eq('id',id);
   if(res.error){alert('Erreur: '+res.error.message);return;}
   await sbLoad();renderEquipe();
+}
+function toggleEqArchive(){_eqF.archived=!_eqF.archived;renderEquipe();}
+async function archiveCons(id){
+  if(!isAdmin()){alert('Acces refuse.');return;}
+  var c=_st.conseillers.find(function(x){return x.id===id;});
+  if(!c)return;
+  confirmAction('Archiver <strong>'+c.name+'</strong> ?<br><br><span style="font-size:11px;color:var(--mu)">Il disparaitra de la liste active et des ecrans de connexion. Ses donnees sont conservees et il pourra etre desarchive.</span>',async function(){
+    var res=await _sb.from('conseillers').update({active:false}).eq('id',id);
+    if(res.error){alert('Erreur: '+res.error.message);return;}
+    await sbLoad();renderEquipe();toast('Conseiller archive',true);
+  });
+}
+async function unarchiveCons(id){
+  if(!isAdmin()){alert('Acces refuse.');return;}
+  var res=await _sb.from('conseillers').update({active:true}).eq('id',id);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  await sbLoad();renderEquipe();toast('Conseiller desarchive',true);
 }
 
 // ── Fiche ──
