@@ -873,7 +873,9 @@ async function saveCons(){
   var name=document.getElementById('cf-name').value.trim();if(!name){alert('Le nom est obligatoire.');return;}
   var obj={name:name,date_entree:document.getElementById('cf-date').value||null,statut:document.getElementById('cf-statut').value||'actif',freq:parseInt(document.getElementById('cf-freq').value)||14};
   var eid=document.getElementById('mod-cons').dataset.editId;
-  var res=eid===-1||eid==='-1'?await _sb.from('conseillers').insert(obj):await _sb.from('conseillers').update(obj).eq('id',eid);
+  var isNew=eid===-1||eid==='-1';
+  if(isNew)obj.active=true;
+  var res=isNew?await _sb.from('conseillers').insert(obj):await _sb.from('conseillers').update(obj).eq('id',eid);
   if(res.error){alert('Erreur: '+res.error.message);return;}
   closeModal('mod-cons');await sbLoad();renderEquipe();
 }
