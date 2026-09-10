@@ -308,6 +308,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
     <div class="mb2"><label class="lbl">Prenom et Nom *</label><input type="text" id="cf-name" placeholder="Sarah Laurent"></div>
     <div class="mb2"><label class="lbl">Date d&#39;entree</label><input type="date" id="cf-date"></div>
     <div class="mb2"><label class="lbl">Statut</label><select id="cf-statut"><option value="actif">Actif</option><option value="formation">En formation</option><option value="inactif">Inactif</option></select></div>
+    <div class="mb2"><label class="lbl">Role</label><select id="cf-role"><option value="conseiller">Conseiller</option><option value="assistant">Assistant</option></select></div>
     <div class="mb3">
       <label class="lbl">Frequence d&#39;evaluation</label>
       <div class="flex ac gap2 mt1"><input type="range" id="cf-freq" min="7" max="60" step="7" value="14" style="flex:1" oninput="document.getElementById('cf-freq-lbl').textContent=this.value+' jours'"><span class="freq-badge" id="cf-freq-lbl">14 jours</span></div>
@@ -730,7 +731,7 @@ function kpiBox(lbl,val,sub,red){return '<div class="kpi"'+(red&&val>0?' style="
   '<div class="kpi-lbl">'+lbl+'</div><div class="kpi-val">'+val+'</div><div class="kpi-sub">'+sub+'</div></div>';}
 
 // ── Equipe ──
-var _eqF={q:'',mgr:'',lv:'',st:'',archived:false};
+var _eqF={q:'',mgr:'',lv:'',st:'',role:'',archived:false};
 var _eqSort={col:'name',dir:1};
 function consStats(cid){
   var evs=_st.evals.filter(function(e){return e.cons_id===cid;});
@@ -759,6 +760,7 @@ function renderEquipe(){
   var mgrEl=document.getElementById('eq-mgr');if(mgrEl)_eqF.mgr=mgrEl.value;
   var lvEl=document.getElementById('eq-lv');if(lvEl)_eqF.lv=lvEl.value;
   var stEl=document.getElementById('eq-st');if(stEl)_eqF.st=stEl.value;
+  var roEl=document.getElementById('eq-role');if(roEl)_eqF.role=roEl.value;
   // Build rows data
   var rows=conseillers.map(function(c){
     var stats=consStats(c.id);
@@ -766,7 +768,7 @@ function renderEquipe(){
     var l=s!==null?lv(s):null;
     var ld=lastDate(c.id);
     var cMgrs=_st.managers.filter(function(m){return m.team&&m.team.indexOf(c.id)>=0;}).map(function(m){return m.name;});
-    return{c:c,stats:stats,score:s,level:l,lastDate:ld,mgrs:cMgrs,statut:c.statut||'actif'};
+    return{c:c,stats:stats,score:s,level:l,lastDate:ld,mgrs:cMgrs,statut:c.statut||'actif',role:c.role||'conseiller'};
   });
   // Filter
   rows=rows.filter(function(r){
@@ -774,6 +776,7 @@ function renderEquipe(){
     if(_eqF.mgr&&r.mgrs.indexOf(_eqF.mgr)<0)return false;
     if(_eqF.lv&&(!r.level||r.level.lbl!==_eqF.lv))return false;
     if(_eqF.st&&r.statut!==_eqF.st)return false;
+    if(_eqF.role&&r.role!==_eqF.role)return false;
     return true;
   });
   // Sort
@@ -793,6 +796,7 @@ function renderEquipe(){
   var allMgrNames=_st.managers.filter(function(m){return m.name!==ADMIN;}).map(function(m){return m.name;});
   var levels=['Elite','Tres bon','Bon','Moyen','Faible','Critique'];
   var statuts=[{v:'actif',l:'Actif'},{v:'formation',l:'En formation'},{v:'inactif',l:'Inactif'}];
+  var roles=[{v:'conseiller',l:'Conseiller'},{v:'assistant',l:'Assistant'}];
   var h='<div class="card mb2" style="padding:12px"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">'
     +'<div style="flex:1;min-width:160px"><label class="lbl">Rechercher</label><input type="text" id="eq-q" value="'+(_eqF.q||'')+'" placeholder="Nom du conseiller..." oninput="renderEquipe()"></div>'
     +'<div><label class="lbl">Manager</label><select id="eq-mgr" onchange="renderEquipe()" style="min-width:130px"><option value="">Tous</option>'
@@ -801,6 +805,8 @@ function renderEquipe(){
     +levels.map(function(l2){return'<option value="'+l2+'"'+(_eqF.lv===l2?' selected':'')+'>'+l2+'</option>';}).join('')+'</select></div>'
     +'<div><label class="lbl">Statut</label><select id="eq-st" onchange="renderEquipe()" style="min-width:120px"><option value="">Tous</option>'
     +statuts.map(function(s2){return'<option value="'+s2.v+'"'+(_eqF.st===s2.v?' selected':'')+'>'+s2.l+'</option>';}).join('')+'</select></div>'
+    +'<div><label class="lbl">Role</label><select id="eq-role" onchange="renderEquipe()" style="min-width:120px"><option value="">Tous</option>'
+    +roles.map(function(r2){return'<option value="'+r2.v+'"'+(_eqF.role===r2.v?' selected':'')+'>'+r2.l+'</option>';}).join('')+'</select></div>'
     +(canEdit?'<div><button class="btn '+(_eqF.archived?'btn-n':'btn-o')+' btn-sm" onclick="toggleEqArchive()">'+(_eqF.archived?'&larr; Retour equipe':'Archives ('+archCount+')')+'</button></div>':'')
     +'</div></div>';
   // Table
@@ -829,7 +835,7 @@ function renderEquipe(){
     h+=rows.map(function(r){
       var c=r.c;
       return '<tr data-cid="'+c.id+'" onclick="openFiche(this.dataset.cid)">'
-        +'<td><div class="flex ac gap1"><div class="ava" style="width:28px;height:28px;font-size:10px">'+ini(c.name)+'</div><strong>'+c.name+'</strong></div></td>'
+        +'<td><div class="flex ac gap1"><div class="ava" style="width:28px;height:28px;font-size:10px">'+ini(c.name)+'</div><strong>'+c.name+'</strong>'+(r.role==='assistant'?' <span class="badge lv-moy" style="font-size:9px">Assistant</span>':'')+'</div></td>'
         +'<td class="fs11 mu">'+(r.mgrs.join(', ')||'—')+'</td>'
         +'<td class="fs11 mu">'+(c.date_entree?fd(c.date_entree):'—')+'</td>'
         +'<td>'+(r.level?'<span class="badge '+r.level.cls+'">'+r.level.lbl+'</span>':'<span class="fs11 mu">—</span>')+'</td>'
@@ -863,6 +869,7 @@ function openConsModal(id){
   document.getElementById('cf-name').value=c?c.name:'';
   document.getElementById('cf-date').value=c&&c.date_entree?c.date_entree.split('T')[0]:'';
   document.getElementById('cf-statut').value=c?(c.statut||'actif'):'actif';
+  document.getElementById('cf-role').value=c?(c.role||'conseiller'):'conseiller';
   var freq=c?c.freq||14:14;document.getElementById('cf-freq').value=freq;document.getElementById('cf-freq-lbl').textContent=freq+' jours';
   document.getElementById('mod-cons').dataset.editId=id;
   document.getElementById('mod-cons').classList.remove('hidden');
@@ -871,7 +878,7 @@ function openConsModal(id){
 async function saveCons(){
   if(!isAdmin()){alert('Acces refuse.');return;}
   var name=document.getElementById('cf-name').value.trim();if(!name){alert('Le nom est obligatoire.');return;}
-  var obj={name:name,date_entree:document.getElementById('cf-date').value||null,statut:document.getElementById('cf-statut').value||'actif',freq:parseInt(document.getElementById('cf-freq').value)||14};
+  var obj={name:name,date_entree:document.getElementById('cf-date').value||null,statut:document.getElementById('cf-statut').value||'actif',role:document.getElementById('cf-role').value||'conseiller',freq:parseInt(document.getElementById('cf-freq').value)||14};
   var eid=document.getElementById('mod-cons').dataset.editId;
   var isNew=eid===-1||eid==='-1';
   if(isNew)obj.active=true;
