@@ -2025,6 +2025,7 @@ async function deleteSuivi(id){
 async function editSuivi(id){var entry=(_st.suivi||[]).find(function(x){return x.id===id;});if(!entry)return;openSuiviModal(entry.type,entry.cons_id,id);}
 
 // ── RH ──
+var RH_COLLECTES=[{id:'asset_signe',l:'Collecte Asset signe'},{id:'immo_signe',l:'Collecte Immo signe'},{id:'asset_acte',l:'Collecte Asset acte'},{id:'immo_acte',l:'Collecte Immo acte'}];
 function openFicheRH(cid){
   var c=_st.conseillers.find(function(x){return x.id===cid;});if(!c)return;
   var entries=(_st.rh||[]).filter(function(e){return e.cons_id===cid;});
@@ -2055,6 +2056,16 @@ function openFicheRH(cid){
       if(entry.type==='commentaire'){body.innerHTML='<div class="fs12" style="background:var(--gp);padding:10px;border-radius:var(--r)">'+(content.texte||'')+'</div>';}
       else{
         var h3='';
+        if(entry.type==='integration'){
+          if(content.date_point)h3+='<div class="fs11 mu mb1">Point du '+fd(content.date_point)+'</div>';
+          var cols=content.collectes||{};
+          if(Object.keys(cols).length){
+            h3+='<div class="sep">Objectifs de collecte</div><div class="flex gap1" style="flex-wrap:wrap">';
+            RH_COLLECTES.forEach(function(k){var v=cols[k.id];if(!v)return;
+              h3+='<span class="badge '+(v==='oui'?'lv-tb':'lv-crit')+'">'+k.l+' : '+(v==='oui'?'Atteint':'Non atteint')+'</span>';});
+            h3+='</div>';
+          }
+        }
         if(content.bilan)h3+='<div class="sep">Bilan</div><div class="fs12">'+content.bilan+'</div>';
         if(content.posture)h3+='<div class="sep">Posture</div><div class="fs12">'+content.posture+'</div>';
         if(content.objectifs)h3+='<div class="sep">Objectifs</div><div class="fs12">'+content.objectifs+'</div>';
@@ -2068,21 +2079,35 @@ function openFicheRH(cid){
   }
   el.innerHTML='';el.appendChild(container);
 }
-function openRHModal(type,cid){
+function openRHModal(type,cid,entryId){
   var c=_st.conseillers.find(function(x){return x.id===cid;});if(!c)return;
+  var ex=entryId?(_st.rh||[]).find(function(x){return x.id===entryId;}):null;
+  var ct=ex&&ex.content?ex.content:{};
+  var esc=function(v){return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');};
   var titles={integration:'Point integration (6 mois)',annuel:'Point annuel',commentaire:'Commentaire RH'};
   var h='<div class="modal-title">'+(titles[type]||type)+' - '+c.name+'</div>';
-  h+='<input type="hidden" id="rh-cons-id" value="'+cid+'"><input type="hidden" id="rh-type" value="'+type+'"><input type="hidden" id="rh-entry-id" value="">';
-  h+='<div class="mb2"><label class="lbl">Titre</label><input type="text" id="rh-title" placeholder="ex: Point annuel 2025" style="width:100%"></div>';
-  if(type==='commentaire'){h+='<div class="mb2"><label class="lbl">Commentaire</label><textarea id="rh-texte" rows="6" style="width:100%;resize:vertical"></textarea></div>';}
+  h+='<input type="hidden" id="rh-cons-id" value="'+cid+'"><input type="hidden" id="rh-type" value="'+type+'"><input type="hidden" id="rh-entry-id" value="'+(entryId||'')+'">';
+  h+='<div class="mb2"><label class="lbl">Titre</label><input type="text" id="rh-title" placeholder="ex: Point annuel 2025" style="width:100%" value="'+esc(ex&&ex.title!==type?ex.title:'')+'"></div>';
+  if(type==='commentaire'){h+='<div class="mb2"><label class="lbl">Commentaire</label><textarea id="rh-texte" rows="6" style="width:100%;resize:vertical">'+esc(ct.texte)+'</textarea></div>';}
   else{
-    if(type==='annuel')h+='<div class="mb2"><label class="lbl">Volume signe</label><input type="text" id="rh-volume" placeholder="ex: 2.4M EUR" style="width:100%"></div>';
-    h+='<div class="mb2"><label class="lbl">Bilan</label><textarea id="rh-bilan" rows="3" style="width:100%;resize:vertical"></textarea></div>';
-    h+='<div class="mb2"><label class="lbl">Posture & comportement</label><textarea id="rh-posture" rows="3" style="width:100%;resize:vertical"></textarea></div>';
-    h+='<div class="mb2"><label class="lbl">Objectifs N+1</label><textarea id="rh-objectifs" rows="3" style="width:100%;resize:vertical"></textarea></div>';
-    h+='<div class="mb2"><label class="lbl">Besoins</label><textarea id="rh-besoins" rows="2" style="width:100%;resize:vertical"></textarea></div>';
-    h+='<div class="mb2"><label class="lbl">Engagements</label><textarea id="rh-engagements" rows="2" style="width:100%;resize:vertical"></textarea></div>';
-    h+='<div class="mb2"><label class="lbl">Notes libres</label><textarea id="rh-texte-libre" rows="3" style="width:100%;resize:vertical"></textarea></div>';
+    if(type==='annuel')h+='<div class="mb2"><label class="lbl">Volume signe</label><input type="text" id="rh-volume" placeholder="ex: 2.4M EUR" style="width:100%" value="'+esc(ct.volume_signe)+'"></div>';
+    if(type==='integration'){
+      h+='<div class="mb2"><label class="lbl">Date du point</label><input type="date" id="rh-date-point" style="width:100%" value="'+esc(ct.date_point||new Date().toISOString().split('T')[0])+'"></div>';
+      h+='<div class="mb2"><label class="lbl">Objectifs de collecte atteints</label>';
+      RH_COLLECTES.forEach(function(k){
+        var v=(ct.collectes||{})[k.id]||'';
+        h+='<div class="flex ac jb gap2" style="padding:4px 0"><span class="fs12">'+k.l+'</span><select id="rh-col-'+k.id+'" style="width:110px">'
+          +[['','—'],['oui','Oui'],['non','Non']].map(function(o){return'<option value="'+o[0]+'"'+(v===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')
+          +'</select></div>';
+      });
+      h+='</div>';
+    }
+    h+='<div class="mb2"><label class="lbl">Bilan</label><textarea id="rh-bilan" rows="3" style="width:100%;resize:vertical">'+esc(ct.bilan)+'</textarea></div>';
+    h+='<div class="mb2"><label class="lbl">Posture & comportement</label><textarea id="rh-posture" rows="3" style="width:100%;resize:vertical">'+esc(ct.posture)+'</textarea></div>';
+    h+='<div class="mb2"><label class="lbl">Objectifs N+1</label><textarea id="rh-objectifs" rows="3" style="width:100%;resize:vertical">'+esc(ct.objectifs)+'</textarea></div>';
+    h+='<div class="mb2"><label class="lbl">Besoins</label><textarea id="rh-besoins" rows="2" style="width:100%;resize:vertical">'+esc(ct.besoins)+'</textarea></div>';
+    h+='<div class="mb2"><label class="lbl">Engagements</label><textarea id="rh-engagements" rows="2" style="width:100%;resize:vertical">'+esc(ct.engagements)+'</textarea></div>';
+    h+='<div class="mb2"><label class="lbl">Notes libres</label><textarea id="rh-texte-libre" rows="3" style="width:100%;resize:vertical">'+esc(ct.texte_libre)+'</textarea></div>';
   }
   h+='<div class="flex gap2"><button class="btn btn-g f1" style="justify-content:center" onclick="saveRHEntry()">Enregistrer</button><button class="btn btn-o" onclick="closeModal(\'mod-rh\')">Annuler</button></div>';
   document.getElementById('mod-rh-body').innerHTML=h;
@@ -2103,11 +2128,12 @@ async function _doSaveRHEntry(){
   var eid=document.getElementById('rh-entry-id').value;var title=document.getElementById('rh-title').value.trim()||type;
   var content={};
   if(type==='commentaire'){content.texte=document.getElementById('rh-texte').value.trim();}
-  else{if(type==='annuel'&&document.getElementById('rh-volume'))content.volume_signe=document.getElementById('rh-volume').value.trim();['bilan','posture','objectifs','besoins','engagements','texte-libre'].forEach(function(k){var el=document.getElementById('rh-'+k);if(el)content[k.replace('-','_')]=el.value.trim();});}
+  else{if(type==='annuel'&&document.getElementById('rh-volume'))content.volume_signe=document.getElementById('rh-volume').value.trim();
+    if(type==='integration'){var dp=document.getElementById('rh-date-point');if(dp)content.date_point=dp.value;content.collectes={};RH_COLLECTES.forEach(function(k){var s=document.getElementById('rh-col-'+k.id);if(s&&s.value)content.collectes[k.id]=s.value;});}['bilan','posture','objectifs','besoins','engagements','texte-libre'].forEach(function(k){var el=document.getElementById('rh-'+k);if(el)content[k.replace('-','_')]=el.value.trim();});}
   var payload={cons_id:cid,type:type,title:title,content:content,created_by:_curMgr(),updated_at:new Date().toISOString()};
   var res=eid?await _sb.from('rh_entries').update(payload).eq('id',eid):await _sb.from('rh_entries').insert(payload);
   if(res.error){alert('Erreur: '+res.error.message);return;}
-  closeModal('mod-rh');await sbLoad();openFicheRH(cid4);toast('Enregistre',true);
+  closeModal('mod-rh');await sbLoad();openFicheRH(cid);toast('Enregistre',true);
 }
 // (end _doSaveRHEntry)
 async function deleteRHEntry(id){
@@ -2117,7 +2143,7 @@ async function deleteRHEntry(id){
   if(res.error){alert('Erreur: '+res.error.message);return;}
   await sbLoad();if(entry)openFicheRH(entry.cons_id);toast('Supprime',true);
 }
-async function editRHEntry(id){var entry=(_st.rh||[]).find(function(x){return x.id===id;});if(!entry)return;openRHModal(entry.type,entry.cons_id);}
+async function editRHEntry(id){var entry=(_st.rh||[]).find(function(x){return x.id===id;});if(!entry)return;openRHModal(entry.type,entry.cons_id,id);}
 
 // ── Objection Suggestions ──
 function openSuggestObjModal(rdv){document.getElementById('sug-rdv').value=rdv;document.getElementById('sug-text').value='';document.getElementById('mod-suggest').classList.remove('hidden');}
