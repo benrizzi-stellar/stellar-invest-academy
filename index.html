@@ -2059,12 +2059,12 @@ function openFicheRH(cid){
         if(entry.type==='integration'){
           if(content.date_point)h3+='<div class="fs11 mu mb1">Point du '+fd(content.date_point)+'</div>';
           var cols=content.collectes||{};
-          if(Object.keys(cols).length){
-            h3+='<div class="sep">Objectifs de collecte</div><div class="flex gap1" style="flex-wrap:wrap">';
-            RH_COLLECTES.forEach(function(k){var v=cols[k.id];if(!v)return;
-              h3+='<span class="badge '+(v==='oui'?'lv-tb':'lv-crit')+'">'+k.l+' : '+(v==='oui'?'Atteint':'Non atteint')+'</span>';});
-            h3+='</div>';
+          var colRows=RH_COLLECTES.filter(function(k){var v=cols[k.id];return v&&v!=='oui'&&v!=='non';});
+          if(colRows.length){
+            h3+='<div class="sep">Collecte</div>';
+            colRows.forEach(function(k){h3+='<div class="flex jb fs12" style="padding:2px 0"><span>'+k.l+'</span><strong>'+cols[k.id]+'</strong></div>';});
           }
+          if(content.integration_validee)h3+='<div class="mt1"><span class="badge '+(content.integration_validee==='oui'?'lv-tb':'lv-crit')+'">Periode d&#39;integration '+(content.integration_validee==='oui'?'validee':'non validee')+'</span></div>';
         }
         if(content.bilan)h3+='<div class="sep">Bilan</div><div class="fs12">'+content.bilan+'</div>';
         if(content.posture)h3+='<div class="sep">Posture</div><div class="fs12">'+content.posture+'</div>';
@@ -2093,14 +2093,16 @@ function openRHModal(type,cid,entryId){
     if(type==='annuel')h+='<div class="mb2"><label class="lbl">Volume signe</label><input type="text" id="rh-volume" placeholder="ex: 2.4M EUR" style="width:100%" value="'+esc(ct.volume_signe)+'"></div>';
     if(type==='integration'){
       h+='<div class="mb2"><label class="lbl">Date du point</label><input type="date" id="rh-date-point" style="width:100%" value="'+esc(ct.date_point||new Date().toISOString().split('T')[0])+'"></div>';
-      h+='<div class="mb2"><label class="lbl">Objectifs de collecte atteints</label>';
+      h+='<div class="mb2"><label class="lbl">Collecte du conseiller</label>';
       RH_COLLECTES.forEach(function(k){
-        var v=(ct.collectes||{})[k.id]||'';
-        h+='<div class="flex ac jb gap2" style="padding:4px 0"><span class="fs12">'+k.l+'</span><select id="rh-col-'+k.id+'" style="width:110px">'
-          +[['','—'],['oui','Oui'],['non','Non']].map(function(o){return'<option value="'+o[0]+'"'+(v===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')
-          +'</select></div>';
+        var v=(ct.collectes||{})[k.id]||'';if(v==='oui'||v==='non')v='';
+        h+='<div class="flex ac jb gap2" style="padding:4px 0"><span class="fs12">'+k.l+'</span><input type="text" id="rh-col-'+k.id+'" placeholder="ex: 150 000 EUR" style="width:180px" value="'+esc(v)+'"></div>';
       });
       h+='</div>';
+      var iv=ct.integration_validee||'';
+      h+='<div class="mb2"><label class="lbl">Periode d&#39;integration validee</label><select id="rh-integ-validee" style="width:100%">'
+        +[['','—'],['oui','Validee'],['non','Non validee']].map(function(o){return'<option value="'+o[0]+'"'+(iv===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')
+        +'</select></div>';
     }
     h+='<div class="mb2"><label class="lbl">Bilan</label><textarea id="rh-bilan" rows="3" style="width:100%;resize:vertical">'+esc(ct.bilan)+'</textarea></div>';
     h+='<div class="mb2"><label class="lbl">Posture & comportement</label><textarea id="rh-posture" rows="3" style="width:100%;resize:vertical">'+esc(ct.posture)+'</textarea></div>';
@@ -2129,7 +2131,7 @@ async function _doSaveRHEntry(){
   var content={};
   if(type==='commentaire'){content.texte=document.getElementById('rh-texte').value.trim();}
   else{if(type==='annuel'&&document.getElementById('rh-volume'))content.volume_signe=document.getElementById('rh-volume').value.trim();
-    if(type==='integration'){var dp=document.getElementById('rh-date-point');if(dp)content.date_point=dp.value;content.collectes={};RH_COLLECTES.forEach(function(k){var s=document.getElementById('rh-col-'+k.id);if(s&&s.value)content.collectes[k.id]=s.value;});}['bilan','posture','objectifs','besoins','engagements','texte-libre'].forEach(function(k){var el=document.getElementById('rh-'+k);if(el)content[k.replace('-','_')]=el.value.trim();});}
+    if(type==='integration'){var dp=document.getElementById('rh-date-point');if(dp)content.date_point=dp.value;content.collectes={};RH_COLLECTES.forEach(function(k){var s=document.getElementById('rh-col-'+k.id);if(s&&s.value.trim())content.collectes[k.id]=s.value.trim();});var iv=document.getElementById('rh-integ-validee');if(iv)content.integration_validee=iv.value;}['bilan','posture','objectifs','besoins','engagements','texte-libre'].forEach(function(k){var el=document.getElementById('rh-'+k);if(el)content[k.replace('-','_')]=el.value.trim();});}
   var payload={cons_id:cid,type:type,title:title,content:content,created_by:_curMgr(),updated_at:new Date().toISOString()};
   var res=eid?await _sb.from('rh_entries').update(payload).eq('id',eid):await _sb.from('rh_entries').insert(payload);
   if(res.error){alert('Erreur: '+res.error.message);return;}
