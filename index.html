@@ -2091,14 +2091,11 @@ function openFicheRH(cid){
 }
 // ── Point annuel detaille ──
 var RH_AXES=[
-  {id:'prospection',l:'Prospection & phoning'},
-  {id:'d0',l:'Qualification D0'},
-  {id:'d1',l:'Decouverte D1'},
-  {id:'d2',l:'Closing D2'},
-  {id:'technicite',l:'Technicite produit (SCPI, AV, structures, PE)'},
-  {id:'organisation',l:'Organisation & suivi admin (hub, fichiers, signatures)'},
-  {id:'conformite',l:'Conformite (KYC, documents reglementaires)'},
-  {id:'posture',l:'Posture & savoir-etre'}
+  {id:'commercial',l:'Activite commerciale (prospection, RDV, signatures)'},
+  {id:'expertise',l:'Expertise & qualite de conseil'},
+  {id:'rigueur',l:'Organisation & rigueur'},
+  {id:'equipe',l:'Esprit d&#39;equipe & culture cabinet'},
+  {id:'engagement',l:'Engagement & motivation'}
 ];
 var RH_NIVEAUX=['','Tres bon','Correct','A surveiller','Prioritaire'];
 function _rhEsc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
@@ -2133,44 +2130,33 @@ function _rhNote(id,val){var h='<select id="'+id+'" style="width:58px">';['','1'
 function rhAnnuelForm(cid,ct){
   var year=ct.annee||String(new Date().getFullYear());
   var h='<div class="flex gap2">'+_rhIn('annee','Annee evaluee',year,'2026','number')+_rhIn('date-point','Date du point',ct.date_point||new Date().toISOString().split('T')[0],'','date')+'</div>';
-  h+='<div class="sep">1. Bilan chiffre (automatique)</div><div id="rh-auto-stats" style="background:var(--gp);padding:10px;border-radius:var(--r)">'+rhAnnuelStatsHtml(rhAnnuelStats(cid,year))+'</div>';
-  h+='<div class="flex gap2 mt1">'+_rhIn('volume','Collecte annuelle realisee',ct.volume_signe,'ex: 2,4M EUR')+_rhIn('obj-n','Objectif annuel fixe',ct.objectif_annuel,'ex: 3M EUR')+'</div>';
-  h+='<div class="sep">2. Grille de competences (1 a 5)</div>';
-  h+='<div class="fs11 mu mb1">Auto = note du conseiller, Manager = ta note. Un ecart de 2 points ou plus est signale.</div>';
-  h+='<table style="width:100%;font-size:12px;border-collapse:collapse"><tr style="text-align:left;color:var(--mu)"><th>Axe</th><th>Auto</th><th>Manager</th><th>Commentaire</th></tr>';
+  h+='<div class="sep">1. L&#39;annee en chiffres (automatique)</div><div id="rh-auto-stats" style="background:var(--gp);padding:10px;border-radius:var(--r)">'+rhAnnuelStatsHtml(rhAnnuelStats(cid,year))+'</div>';
+  h+='<div class="flex gap2 mt1">'+_rhIn('volume','Collecte de l&#39;annee',ct.volume_signe,'ex: 2,4M EUR')+'</div>';
+  h+=_rhTa('bilan','Bilan de l&#39;annee (ce qui a marche, ce qui a coince)',ct.bilan,3);
+  h+='<div class="sep">2. Auto-evaluation (1 a 5)</div>';
+  h+='<div class="fs11 mu mb1">Le conseiller se note, puis toi. Un ecart de 2 points ou plus est signale.</div>';
+  h+='<table style="width:100%;font-size:12px;border-collapse:collapse"><tr style="text-align:left;color:var(--mu)"><th>Axe</th><th>Conseiller</th><th>Manager</th></tr>';
   var g=ct.grille||{};
-  RH_AXES.forEach(function(a){var v=g[a.id]||{};h+='<tr style="border-top:1px solid var(--bd)"><td style="padding:4px 4px 4px 0">'+a.l+'</td><td>'+_rhNote('rh-g-auto-'+a.id,v.auto)+'</td><td>'+_rhNote('rh-g-mgr-'+a.id,v.mgr)+'</td><td><input type="text" id="rh-g-com-'+a.id+'" style="width:100%" value="'+_rhEsc(v.com)+'"></td></tr>';});
+  RH_AXES.forEach(function(a){var v=g[a.id]||{};h+='<tr style="border-top:1px solid var(--bd)"><td style="padding:4px 4px 4px 0">'+a.l+'</td><td>'+_rhNote('rh-g-auto-'+a.id,v.auto)+'</td><td>'+_rhNote('rh-g-mgr-'+a.id,v.mgr)+'</td></tr>';});
   h+='</table>';
-  h+='<div class="sep">3. Bilan qualitatif</div>';
-  h+=_rhTa('reussites','3 reussites de l&#39;annee',ct.reussites,3);
-  h+=_rhTa('difficultes','3 difficultes et leur cause',ct.difficultes,3);
-  h+=_rhTa('a-refaire','Ce qu&#39;il ferait autrement',ct.a_refaire,2);
-  h+=_rhTa('posture','Posture & comportement',ct.posture,2);
-  h+='<div class="sep">4. Projet & evolution</div>';
-  h+=_rhTa('ambition','Ambition a 1 an et 3 ans',ct.ambition,2);
-  h+='<div class="flex gap2">'+_rhIn('grade-actuel','Grade actuel',ct.grade_actuel,'ex: CN1')+_rhIn('grade-vise','Grade vise',ct.grade_vise,'ex: CN2')+'</div>';
-  h+=_rhTa('conditions-passage','Conditions de passage (chiffrees)',ct.conditions_passage,2);
-  h+=_rhTa('formations','Formations souhaitees',ct.formations,2);
-  h+='<div class="sep">5. Objectifs N+1</div>';
-  h+='<div class="flex gap2">'+_rhIn('obj-collecte','Collecte annuelle',ct.obj_collecte,'ex: 4M EUR')+'</div>';
-  h+='<div class="flex gap2">'+_rhIn('obj-t1','T1',ct.obj_t1,'')+_rhIn('obj-t2','T2',ct.obj_t2,'')+_rhIn('obj-t3','T3',ct.obj_t3,'')+_rhIn('obj-t4','T4',ct.obj_t4,'')+'</div>';
-  h+=_rhTa('obj-activite','Indicateurs d&#39;activite',ct.obj_activite,2,'ex: 5 D1 par semaine, transfo D1 &gt; 20 %');
-  h+=_rhTa('obj-mix','Mix produits',ct.obj_mix,2,'ex: 40 % SCPI, 30 % AV, 10 % PE');
-  h+=_rhTa('objectifs','Objectifs qualitatifs',ct.objectifs,2);
-  h+='<div class="sep">6. Engagements & synthese</div>';
-  h+=_rhTa('besoins','Besoins du conseiller',ct.besoins,2);
-  h+=_rhTa('engagements-cabinet','Engagements du cabinet',ct.engagements_cabinet,2);
-  h+=_rhTa('engagements','Engagements du conseiller',ct.engagements,2);
+  h+=_rhTa('grille-com','Commentaire sur les notes',ct.grille_com,2);
+  h+='<div class="sep">3. Positionnement dans le cabinet</div>';
+  h+=_rhTa('positionnement','Sa place dans la societe aujourd&#39;hui, et ou il se voit',ct.positionnement,3,'Role dans l&#39;equipe, contribution au cabinet, perspectives');
+  h+='<div class="sep">4. Objectifs de l&#39;annee a venir</div>';
+  h+='<div class="flex gap2">'+_rhIn('obj-collecte','Objectif de collecte',ct.obj_collecte,'ex: 4M EUR')+'</div>';
+  h+=_rhTa('objectifs','Objectifs (2-3 maximum)',ct.objectifs,3);
+  h+='<div class="sep">5. Engagements</div>';
+  h+=_rhTa('engagements','Engagements du conseiller',ct.engagements,3);
+  h+=_rhTa('engagements-cabinet','Engagements du cabinet',ct.engagements_cabinet,3);
   h+='<div class="flex gap2"><div class="mb2 f1"><label class="lbl">Niveau global</label><select id="rh-niveau-global" style="width:100%">'+RH_NIVEAUX.map(function(n){return'<option value="'+n+'"'+(ct.niveau_global===n?' selected':'')+'>'+(n||'-')+'</option>';}).join('')+'</select></div>'+_rhIn('prochain-point','Prochain point',ct.prochain_point,'','date')+'</div>';
-  h+=_rhTa('decision','Decision (grade, remuneration, plan d&#39;action)',ct.decision,2);
   h+=_rhTa('texte-libre','Notes libres',ct.texte_libre,2);
   return h;
 }
 function rhAnnuelRead(cid){
   var v=function(id){var el=document.getElementById('rh-'+id);return el?el.value.trim():'';};
-  var c={annee:v('annee'),date_point:v('date-point'),volume_signe:v('volume'),objectif_annuel:v('obj-n'),grille:{}};
-  RH_AXES.forEach(function(a){var o={auto:v('g-auto-'+a.id),mgr:v('g-mgr-'+a.id),com:v('g-com-'+a.id)};if(o.auto||o.mgr||o.com)c.grille[a.id]=o;});
-  [['reussites','reussites'],['difficultes','difficultes'],['a-refaire','a_refaire'],['posture','posture'],['ambition','ambition'],['grade-actuel','grade_actuel'],['grade-vise','grade_vise'],['conditions-passage','conditions_passage'],['formations','formations'],['obj-collecte','obj_collecte'],['obj-t1','obj_t1'],['obj-t2','obj_t2'],['obj-t3','obj_t3'],['obj-t4','obj_t4'],['obj-activite','obj_activite'],['obj-mix','obj_mix'],['objectifs','objectifs'],['besoins','besoins'],['engagements-cabinet','engagements_cabinet'],['engagements','engagements'],['niveau-global','niveau_global'],['prochain-point','prochain_point'],['decision','decision'],['texte-libre','texte_libre']].forEach(function(p){c[p[1]]=v(p[0]);});
+  var c={annee:v('annee'),date_point:v('date-point'),volume_signe:v('volume'),grille:{}};
+  RH_AXES.forEach(function(a){var o={auto:v('g-auto-'+a.id),mgr:v('g-mgr-'+a.id)};if(o.auto||o.mgr)c.grille[a.id]=o;});
+  [['bilan','bilan'],['grille-com','grille_com'],['positionnement','positionnement'],['obj-collecte','obj_collecte'],['objectifs','objectifs'],['engagements','engagements'],['engagements-cabinet','engagements_cabinet'],['niveau-global','niveau_global'],['prochain-point','prochain_point'],['texte-libre','texte_libre']].forEach(function(p){c[p[1]]=v(p[0]);});
   c.stats=rhAnnuelStats(cid,c.annee||String(new Date().getFullYear()));
   return c;
 }
@@ -2180,21 +2166,21 @@ function rhAnnuelView(ct){
   var row=function(l,val){return val?'<div class="fs12 mb1"><span class="bold mu">'+l+' : </span>'+e(val)+'</div>':'';};
   if(ct.date_point||ct.annee)h+='<div class="fs11 mu mb1">Annee '+e(ct.annee||'')+(ct.date_point?' - point du '+fd(ct.date_point):'')+'</div>';
   if(ct.niveau_global){var cls={'Tres bon':'lv-tb','Correct':'lv-bon','A surveiller':'lv-moy','Prioritaire':'lv-crit'}[ct.niveau_global]||'';h+='<span class="badge '+cls+'">Niveau global : '+e(ct.niveau_global)+'</span>';}
-  var b1='';if(ct.stats)b1+=rhAnnuelStatsHtml(ct.stats);b1+=row('Collecte realisee',ct.volume_signe)+row('Objectif annuel',ct.objectif_annuel);
-  sec('Bilan chiffre',b1);
-  var g=ct.grille||{};var gk=RH_AXES.filter(function(a){return g[a.id];});
+  var b1='';if(ct.stats)b1+=rhAnnuelStatsHtml(ct.stats);b1+=row('Collecte de l&#39;annee',ct.volume_signe)+row('Bilan',ct.bilan);
+  sec('L&#39;annee',b1);
+  var g=ct.grille||{};var axes=RH_AXES.concat(Object.keys(g).filter(function(k){return!RH_AXES.some(function(a){return a.id===k;});}).map(function(k){return{id:k,l:k};}));
+  var gk=axes.filter(function(a){return g[a.id];});
   if(gk.length){
-    var t='<table style="width:100%;font-size:12px;border-collapse:collapse"><tr style="text-align:left;color:var(--mu)"><th>Axe</th><th>Auto</th><th>Manager</th><th>Commentaire</th></tr>';var sm=0,nm=0;
+    var t='<table style="width:100%;font-size:12px;border-collapse:collapse"><tr style="text-align:left;color:var(--mu)"><th>Axe</th><th>Conseiller</th><th>Manager</th></tr>';var sm=0,nm=0;
     gk.forEach(function(a){var o=g[a.id];var gap=o.auto&&o.mgr&&Math.abs(o.auto-o.mgr)>=2;if(o.mgr){sm+=+o.mgr;nm++;}
-      t+='<tr style="border-top:1px solid var(--bd)'+(gap?';background:#FFF4E9':'')+'"><td>'+a.l+(gap?' <span class="badge lv-moy">ecart</span>':'')+'</td><td>'+(o.auto||'-')+'</td><td><strong>'+(o.mgr||'-')+'</strong></td><td>'+e(o.com||'')+'</td></tr>';});
+      t+='<tr style="border-top:1px solid var(--bd)'+(gap?';background:#FFF4E9':'')+'"><td>'+a.l+(gap?' <span class="badge lv-moy">ecart</span>':'')+'</td><td>'+(o.auto||'-')+'</td><td><strong>'+(o.mgr||'-')+'</strong></td></tr>';});
     t+='</table>';if(nm)t+='<div class="fs12 mt1">Moyenne manager : <strong>'+(Math.round(sm/nm*10)/10)+' / 5</strong></div>';
-    sec('Grille de competences',t);
+    t+=row('Commentaire',ct.grille_com);
+    sec('Auto-evaluation',t);
   }
-  sec('Bilan qualitatif',row('Reussites',ct.reussites)+row('Difficultes',ct.difficultes)+row('A faire autrement',ct.a_refaire)+row('Posture',ct.posture)+row('Bilan',ct.bilan));
-  sec('Projet & evolution',row('Ambition',ct.ambition)+((ct.grade_actuel||ct.grade_vise)?row('Grade',(ct.grade_actuel||'?')+' -> '+(ct.grade_vise||'?')):'')+row('Conditions de passage',ct.conditions_passage)+row('Formations',ct.formations));
-  var tri=['obj_t1','obj_t2','obj_t3','obj_t4'].map(function(k,i){return ct[k]?'T'+(i+1)+' '+ct[k]:'';}).filter(Boolean).join(' / ');
-  sec('Objectifs N+1',row('Collecte',ct.obj_collecte)+row('Trimestres',tri)+row('Activite',ct.obj_activite)+row('Mix produits',ct.obj_mix)+row('Qualitatifs',ct.objectifs));
-  sec('Engagements & synthese',row('Besoins',ct.besoins)+row('Cabinet',ct.engagements_cabinet)+row('Conseiller',ct.engagements)+row('Decision',ct.decision)+(ct.prochain_point?row('Prochain point',fd(ct.prochain_point)):'')+row('Notes',ct.texte_libre));
+  sec('Positionnement dans le cabinet',row('Positionnement',ct.positionnement)+row('Posture',ct.posture)+row('Ambition',ct.ambition));
+  sec('Objectifs',row('Collecte',ct.obj_collecte)+row('Objectifs',ct.objectifs));
+  sec('Engagements',row('Conseiller',ct.engagements)+row('Cabinet',ct.engagements_cabinet)+row('Besoins',ct.besoins)+(ct.prochain_point?row('Prochain point',fd(ct.prochain_point)):'')+row('Notes',ct.texte_libre));
   return h;
 }
 function rhAnnuelRefreshStats(cid){var el=document.getElementById('rh-auto-stats');var y=document.getElementById('rh-annee');if(el&&y)el.innerHTML=rhAnnuelStatsHtml(rhAnnuelStats(cid,y.value));}
