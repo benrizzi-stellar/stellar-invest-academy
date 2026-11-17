@@ -493,19 +493,12 @@ function openLoginScreen(){
   var roleDiv=document.createElement('div');
   roleDiv.id='login-role-select';
   roleDiv.style.cssText='display:flex;flex-direction:column;gap:10px';
-  var roles=[
-    {type:'admin',icon:'&#x1F451;',label:'Administrateur',sub:'Acces complet',color:'rgba(226,246,126,.2)',border:'var(--gl)'},
-    {type:'manager',icon:'&#x1F464;',label:'Manager',sub:'Acces a votre equipe',color:'rgba(37,99,235,.15)',border:'#3B82F6'},
-    {type:'conseiller',icon:'&#x1F393;',label:'Conseiller',sub:'Mon espace personnel',color:'rgba(20,95,57,.15)',border:'#22C55E'}
-  ];
-  roles.forEach(function(r){
-    var btn=document.createElement('button');
-    btn.style.cssText='padding:16px;background:'+r.color+';border:1px solid '+r.border+';border-radius:10px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:left;display:flex;align-items:center;gap:12px;width:100%';
-    btn.innerHTML='<span style="font-size:22px">'+r.icon+'</span><div><div>'+r.label+'</div><div style="font-size:11px;opacity:.7;font-weight:400">'+r.sub+'</div></div>';
-    btn.dataset.rtype=r.type;
-    btn.onclick=function(){showLoginForm(this.dataset.rtype);};
-    roleDiv.appendChild(btn);
-  });
+  roleDiv.style.cssText='display:block';
+  roleDiv.innerHTML='<input type="email" id="lf-email" autocomplete="username" placeholder="prenom.nom@stellar-invest.fr" style="width:100%;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:14px;font-family:inherit;margin-bottom:10px">'
+    +'<input type="password" id="lf-email-pwd" autocomplete="current-password" placeholder="Mot de passe" style="width:100%;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:14px;font-family:inherit;margin-bottom:10px" onkeydown="if(event.key===&#39;Enter&#39;)doLoginEmail()">'
+    +'<button onclick="doLoginEmail()" style="width:100%;padding:12px;background:var(--g);color:var(--n);border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Connexion</button>'
+    +'<div id="lf-err" style="color:#FCA5A5;font-size:12px;margin-top:8px;text-align:center"></div>'
+    +'<div style="color:rgba(255,255,255,.5);font-size:11px;margin-top:14px;text-align:center">Premiere connexion : le mot de passe saisi devient le votre (4 caracteres min).</div>';
   inner.appendChild(roleDiv);
   // Login form container
   var formDiv=document.createElement('div');
@@ -561,6 +554,45 @@ function showLoginForm(roleType){
       +'<button onclick="doLoginConseiller()" style="width:100%;padding:12px;background:#16A34A;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Connexion</button>'
       +'<div id="lf-err" style="color:#FCA5A5;font-size:12px;margin-top:8px;text-align:center"></div>';
   }
+}
+function _emailKeys(name){
+  var t=String(name||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z\s-]/g,'').trim().split(/\s+/);
+  if(t.length<2)return[];var p=t[0],r=t.slice(1);
+  return[p+'.'+r.join(''),p+'.'+r.join('-'),p+'.'+r.join('.'),p+'.'+r[r.length-1]].map(function(x){return x+'@stellar-invest.fr';});
+}
+function _matchEmail(name,email){return _emailKeys(name).indexOf(email)>=0;}
+async function doLoginEmail(){
+  var err=document.getElementById('lf-err');
+  var email=document.getElementById('lf-email').value.trim().toLowerCase();
+  var pwd=document.getElementById('lf-email-pwd').value;
+  if(!email){err.textContent='Saisissez votre email.';return;}
+  if(email.indexOf('@')<0)email+='@stellar-invest.fr';
+  var mgr=_st.managers.find(function(m){return m.active!==false&&_matchEmail(m.name,email);});
+  var cons=_st.conseillers.find(function(c){return c.active!==false&&_matchEmail(c.name,email);});
+  if(!mgr&&!cons){err.textContent='Email inconnu ou acces desactive.';return;}
+  if(!pwd){err.textContent='Saisissez votre mot de passe.';return;}
+  var okMgr=mgr&&mgr.pwd&&pwd===mgr.pwd;
+  var okCons=cons&&cons.pwd&&pwd===cons.pwd;
+  if(!okMgr&&!okCons){
+    // Premiere connexion : creation du mot de passe
+    var target=mgr&&!mgr.pwd?{t:'managers',o:mgr}:(cons&&!cons.pwd&&!mgr?{t:'conseillers',o:cons}:null);
+    if(!target){err.textContent='Mot de passe incorrect.';return;}
+    if(pwd.length<4){err.textContent='Creez un mot de passe (min 4 caracteres).';return;}
+    var res=await _sb.from(target.t).update({pwd:pwd}).eq('id',target.o.id);
+    if(res.error){err.textContent='Erreur: '+res.error.message;return;}
+    target.o.pwd=pwd;toast('Mot de passe cree',true);
+    if(target.t==='managers')okMgr=true;else okCons=true;
+  }
+  if(okMgr){
+    var name=mgr.name;_role=mgr.is_admin?'admin':'manager';_setCurMgr(name);
+    document.getElementById('mgr-dot').textContent=name[0];
+    document.getElementById('mgr-name').textContent=name;
+    var rb=document.getElementById('role-badge');if(rb){rb.style.display='inline';rb.textContent=mgr.is_admin?'ADMIN':'MANAGER';}
+    hideLoginScreen();renderDash();toast('Bienvenue, '+name,true);return;
+  }
+  _role='conseiller';_conseillerSession={id:cons.id,name:cons.name};
+  _lcSet('sia_cons_session',{id:cons.id,name:cons.name});
+  hideLoginScreen();showConseillerView();toast('Bienvenue, '+cons.name,true);
 }
 async function doLoginAdmin(){
   var name=document.getElementById('lf-admin-sel').value;
