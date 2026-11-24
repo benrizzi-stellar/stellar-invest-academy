@@ -1000,6 +1000,7 @@ function showFicheTab(tab,btn){
   document.getElementById('fiche-suivi-content').style.display='none';
   document.getElementById('fiche-rh-content').style.display='none';
   var map={eval:'fiche-content',planning:'fiche-planning-content',suivi:'fiche-suivi-content',rh:'fiche-rh-content',analyses:'fiche-suivi-content',historique:'fiche-content'};
+  document.getElementById('fiche-suivi-content').dataset.view=tab;
   document.getElementById(map[tab]).style.display='block';
   document.querySelectorAll('#fiche-tabs .seg-b').forEach(function(b){b.classList.remove('on');});
   if(btn)btn.classList.add('on');
@@ -1050,6 +1051,7 @@ function renderFicheEval(cid){
         +'<span class="fs11 mu">'+e.manager+'</span></div>'
         +(e.synthese?'<div class="fs11 mu mt1" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+e.synthese+'</div>':'')+'</div>';
     }).join(''))+'</div></div></div>';
+  h+=ecouteSummaryHtml(cid);
   document.getElementById('fiche-content').innerHTML=h;
   setTimeout(function(){
     var el=document.getElementById('cv-fiche');if(!el||!evs.length)return;
@@ -2862,64 +2864,436 @@ var GRILLE_SECTIONS=[
   ]}
 ];
 
+// ══ GRILLE D'ECOUTE D0 / D1 / D2 (v2, notee par le senior) ══
+var ECOUTE_LEVIERS=[
+  {id:'fisc_rev',l:'Fiscalite des revenus'},{id:'ifi',l:'IFI'},{id:'societe',l:'Societe et remuneration'},
+  {id:'cession',l:'Cession d&#39;entreprise'},{id:'retraite',l:'Retraite'},{id:'transmission',l:'Transmission'},
+  {id:'protection',l:'Protection'},{id:'allocation',l:'Allocation et liquidite'},{id:'immo',l:'Immobilier'},
+  {id:'financement',l:'Financement'}
+];
+var ECOUTE_BLOCS=[
+  {id:'A',t:'A. Le client',q:['q1','q2','q3']},
+  {id:'B',t:'B. Le dossier technique',q:['q4','q5','q6','q7']},
+  {id:'C',t:'C. La methode du senior',q:['q8','q9','q10']},
+  {id:'D',t:'D. Auto-formation',q:['q11','q12']}
+];
+var ECOUTE_B={
+  q4:'Quels sont les 2 ou 3 leviers prioritaires dans ce dossier ?',
+  q5:'Pour chaque levier, quel chiffre ou fait du dossier le justifie ?',
+  q6:'Quelles solutions permettent d&#39;actionner chaque levier ? Quelles sont leurs limites et leurs risques ?',
+  q7:'Quel point technique ne maitrises-tu pas encore dans ce dossier ?'
+};
+var ECOUTE_Q={
+  d0:{
+    q1:'Resume la situation du client : famille, revenus, patrimoine, structure.',
+    q2:'Quels sont ses objectifs, par priorite et avec un horizon ? Quel est le vrai besoin derriere ?',
+    q3:'Quel est son profil de risque, sur quoi te bases-tu ? Qui decide vraiment ?',
+    q8:'Comment le senior a-t-il presente Stellar, sa remuneration, son process, et cree la confiance ?',
+    q9:'Note mot pour mot sa meilleure question. Pourquoi est-elle bonne ?',
+    q10:'Comment a-t-il obtenu le D1 ? Quelles informations manquent encore, que doit preparer le client ?',
+    q11:'Si tu devais preparer le D1, quelle solution presenterais-tu, et pourquoi ?',
+    q12:'Quelle technique vas-tu reutiliser dans ton prochain D0 ?'
+  },
+  d1:{
+    q1:'Quelle solution le senior a-t-il presentee : produit, montants, repartition ?',
+    q2:'Comment cette solution repond-elle aux objectifs identifies au D0 ?',
+    q3:'A quel moment le client a-t-il ete convaincu, ou a-t-il decroche ?',
+    q8:'Comment ont ete presentes les risques (perte en capital), la duree, la liquidite et les frais ?',
+    q9:'Quelles objections sont apparues, et comment ont-elles ete traitees ?',
+    q10:'Comment a-t-il rendu la solution concrete (simulation, exemples) et fixe le D2 ?',
+    q11:'Ta solution imaginee au D0 etait-elle proche ? Qu&#39;aurais-tu fait differemment ?',
+    q12:'Quelle technique vas-tu reutiliser dans ton prochain D1 ?'
+  },
+  d2:{
+    q1:'Rappelle le contexte du client et la decision attendue a ce RDV.',
+    q2:'Quels freins restaient au debut du RDV ?',
+    q3:'Qu&#39;est-ce qui a ete decide ? Quelle est la suite (signature, delai, documents) ?',
+    q8:'Comment le senior a-t-il resynthetise la logique patrimoniale globale ?',
+    q9:'Quelles objections finales sont apparues, et comment ont-elles ete traitees ?',
+    q10:'Note mot pour mot sa phrase de demande de decision. Qu&#39;est-ce qui la rend efficace ?',
+    q11:'Qu&#39;aurais-tu fait differemment, et pourquoi ?',
+    q12:'Quelle technique vas-tu reutiliser dans ton prochain D2 ?'
+  }
+};
+var ECOUTE_ATTENDU={d0:'un diagnostic argumente a partir de l&#39;audit',d1:'le lien entre chaque levier et la solution presentee',d2:'la logique globale et la solution retenue'};
+var ECOUTE_RDV=[['d0','D0 Etude'],['d1scpi','D1 SCPI'],['d1asset','D1 Asset'],['d1pe','D1 PE'],['d2','D2 Closing']];
+
+function ecouteStage(rdv){if(rdv==='d0')return'd0';if(rdv==='d2')return'd2';if(rdv&&String(rdv).indexOf('d1')===0)return'd1';return null;}
+function ecouteIsV2(a){return !!(a&&a.grille&&a.grille.v===2);}
+function ecouteLbl(st,qid){return ECOUTE_B[qid]||(ECOUTE_Q[st]||{})[qid]||qid;}
+function _ecTxt(v){return _rhEsc(v).replace(/>/g,'&gt;').replace(/\n/g,'<br>');}
+function ecouteRdvLbl(a){return DB.rdv()[a.rdv_type]?DB.rdv()[a.rdv_type].label:(a.rdv_type||'');}
+function ecouteTotals(a){
+  var n=(a&&a.grille||{})._notation;if(!n||!n.scores)return null;
+  var r={total:0,max:36,blocs:{},complete:true};
+  ECOUTE_BLOCS.forEach(function(b){
+    var s=0;
+    b.q.forEach(function(q){var v=n.scores[q];if(v===undefined||v===null||v==='')r.complete=false;else s+=parseInt(v,10)||0;});
+    r.blocs[b.id]={s:s,max:b.q.length*3};r.total+=s;
+  });
+  return r;
+}
+function ecouteStatut(t){
+  if(!t)return null;
+  if(t.total>=29)return{l:'Compris',c:'var(--tb)',bg:'var(--tb-bg)'};
+  if(t.total>=18)return{l:'En cours',c:'var(--moy)',bg:'var(--moy-bg)'};
+  return{l:'A revoir',c:'var(--crit)',bg:'var(--crit-bg)'};
+}
+function ecouteScoreHtml(a){
+  var t=ecouteTotals(a);
+  if(!t)return'<span class="badge" style="background:var(--moy-bg);color:var(--moy)">En attente de notation</span>';
+  var s=ecouteStatut(t);
+  return'<div style="text-align:center;flex-shrink:0"><div style="font-size:22px;font-weight:700;color:var(--n)">'+t.total+'<span style="font-size:11px;color:var(--mu)"> / 36</span></div>'
+    +'<span class="badge" style="background:'+s.bg+';color:'+s.c+'">'+s.l+'</span></div>';
+}
+function ecouteRappelHtml(g){
+  if(!g.q0_rappel)return'';
+  return'<div class="fs12 mb2" style="background:var(--gp);padding:8px;border-radius:var(--r)">'
+    +'<span class="fs10 bold mu">Point a travailler la derniere fois : </span>'+_ecTxt(g.q0_rappel)
+    +'<br><span class="fs10 bold mu">Ce que j&#39;ai appris : </span>'+(g.q0?_ecTxt(g.q0):'<span class="mu">--</span>')+'</div>';
+}
+function ecouteLeviersHtml(g){
+  if(!g.leviers||!g.leviers.length)return'';
+  return'<div class="mb1">'+g.leviers.map(function(id){
+    var x=ECOUTE_LEVIERS.find(function(y){return y.id===id;});
+    return x?'<span class="badge" style="background:var(--gl);color:var(--n);margin:0 4px 4px 0">'+x.l+'</span>':'';
+  }).join('')+'</div>';
+}
+function ecouteBodyHtml(a){
+  var g=a.grille||{},st=ecouteStage(a.rdv_type)||'d0',n=g._notation||null,t=n?ecouteTotals(a):null,h='';
+  h+=ecouteRappelHtml(g);
+  ECOUTE_BLOCS.forEach(function(b){
+    var bt=t?t.blocs[b.id]:null;
+    h+='<div style="display:flex;justify-content:space-between;font-size:9px;text-transform:uppercase;color:var(--n);font-weight:700;margin:12px 0 5px;border-bottom:1px solid var(--gl);padding-bottom:3px"><span>'+b.t+'</span>'+(bt?'<span>'+bt.s+' / '+bt.max+'</span>':'')+'</div>';
+    if(b.id==='B')h+=ecouteLeviersHtml(g);
+    b.q.forEach(function(q){
+      var v=n&&n.scores&&n.scores[q]!==undefined&&n.scores[q]!==''?n.scores[q]:null;
+      h+='<div class="mb1" style="display:flex;gap:10px;align-items:flex-start"><div style="flex:1">'
+        +'<div class="fs10 bold mu">'+q.slice(1)+'. '+ecouteLbl(st,q)+'</div>'
+        +'<div class="fs12">'+(g[q]?_ecTxt(g[q]):'<span class="mu">--</span>')+'</div></div>'
+        +(v!==null?'<div style="flex-shrink:0;font-weight:700;font-size:13px;color:var(--n)">'+v+'/3</div>':'')+'</div>';
+    });
+  });
+  if(n&&n.commentaire){
+    h+='<div style="margin-top:12px;padding:10px;background:var(--bon-bg);border-left:3px solid var(--bon);border-radius:0 var(--r) var(--r) 0">'
+      +'<div class="fs10 bold" style="color:var(--bon);margin-bottom:3px">Debrief de '+_ecTxt(n.by||'')+(n.at?' — '+fd(n.at):'')+'</div>'
+      +'<div class="fs12">'+_ecTxt(n.commentaire)+'</div></div>';
+  }else if(n&&n.by){
+    h+='<div class="fs10 mu" style="margin-top:8px">Note par '+_ecTxt(n.by)+(n.at?' le '+fd(n.at):'')+'</div>';
+  }
+  return h;
+}
+function legacyAnalyseBodyHtml(a){
+  var bh='';
+  if(a.commentaire_general)bh+='<div class="fs12 mb2" style="background:var(--gp);padding:8px;border-radius:var(--r)">'+_ecTxt(a.commentaire_general)+'</div>';
+  var grille=a.grille||{};
+  GRILLE_SECTIONS.forEach(function(sec){
+    var hasContent=sec.questions.some(function(q){return grille[q.id];});
+    if(!hasContent)return;
+    bh+='<div style="font-size:9px;text-transform:uppercase;color:var(--n);font-weight:700;margin:10px 0 5px;border-bottom:1px solid var(--gl);padding-bottom:3px">'+sec.titre+'</div>';
+    sec.questions.forEach(function(q){
+      if(grille[q.id])bh+='<div class="mb1"><span class="fs10 bold mu">'+q.lbl+' : </span><span class="fs12">'+_ecTxt(grille[q.id])+'</span></div>';
+    });
+  });
+  return bh;
+}
+function ecouteSummaryHtml(cid){
+  var list=(_st.analyses||[]).filter(function(a){return a.junior_id===cid&&ecouteIsV2(a);});
+  if(!list.length)return'';
+  var byDate=function(x,y){return(x.rdv_date||'').localeCompare(y.rdv_date||'');};
+  var h='<div class="card mb3"><div style="font-size:11px;font-weight:700;color:var(--n);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Grilles d&#39;ecoute</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px">';
+  [['d0','D0 Etude'],['d1','D1 Solution'],['d2','D2 Closing']].forEach(function(p){
+    var l=list.filter(function(a){return ecouteStage(a.rdv_type)===p[0];});
+    var notes=l.filter(function(a){var t=ecouteTotals(a);return t&&t.complete;}).sort(byDate);
+    var last=notes.length?notes[notes.length-1]:null,lt=last?ecouteTotals(last):null,s=ecouteStatut(lt);
+    var avg=notes.length?Math.round(notes.reduce(function(acc,a){return acc+ecouteTotals(a).total;},0)/notes.length):null;
+    h+='<div class="kpi"><div class="kpi-lbl">'+p[1]+'</div>'
+      +'<div class="kpi-val">'+(lt?lt.total+'<span style="font-size:12px;color:var(--mu)"> / 36</span>':'--')+'</div>'
+      +'<div class="kpi-sub">'+l.length+' ecoute'+(l.length>1?'s':'')+', '+notes.length+' notee'+(notes.length>1?'s':'')+(avg!==null&&notes.length>1?' — moy. '+avg:'')+'</div>'
+      +(s?'<span class="badge" style="background:'+s.bg+';color:'+s.c+';margin-top:4px">'+s.l+'</span>':'')+'</div>';
+  });
+  h+='</div>';
+  var tots=list.map(ecouteTotals).filter(function(t){return t&&t.complete;});
+  if(tots.length){
+    var pcts=ECOUTE_BLOCS.map(function(b){
+      var s=0,m=0;tots.forEach(function(t){s+=t.blocs[b.id].s;m+=t.blocs[b.id].max;});
+      return{t:b.t,p:m?Math.round(s/m*100):0};
+    });
+    var low=pcts.slice().sort(function(x,y){return x.p-y.p;})[0];
+    h+='<div class="fs11" style="margin-top:10px;color:var(--tx)"><span class="bold">Moyenne par bloc : </span>'
+      +pcts.map(function(x){return x.t+' '+x.p+'%';}).join(' · ')
+      +'<br><span class="bold">A travailler en priorite : </span>'+low.t+'</div>';
+  }
+  var lastQ7=list.filter(function(a){return a.grille.q7;}).sort(byDate).pop();
+  if(lastQ7)h+='<div class="fs11" style="margin-top:6px"><span class="bold">Dernier point technique a travailler : </span>'+_ecTxt(lastQ7.grille.q7)+'</div>';
+  h+='</div>';
+  return h;
+}
+function _ecouteMyIds(cid){
+  var ids=[cid];
+  (_st.managers||[]).forEach(function(m){if(m.cons_id===cid)ids.push(m.id);});
+  return ids;
+}
+function _ecouteCard(a,opts){
+  var card=document.createElement('div');card.className='card mb2';
+  var chdr=document.createElement('div');chdr.className='flex jb ac mb2';
+  var who=opts.showJunior?((_st.conseillers.find(function(c){return c.id===a.junior_id;})||{}).name||'?'):seniorName(a.senior_id);
+  chdr.innerHTML='<div class="flex ac gap2"><span style="font-size:18px">&#128064;</span><div><strong style="font-size:14px">'
+    +(opts.showJunior?'Ecoute de '+_ecTxt(who):'RDV observe : '+_ecTxt(who))+'</strong>'
+    +'<div class="fs11 mu">'+ecouteRdvLbl(a)+' — '+fd(a.rdv_date)+(a.dossier?' — Dossier : '+_ecTxt(a.dossier):'')+'</div></div></div>';
+  var right=document.createElement('div');right.className='flex ac gap2';
+  var v2=ecouteIsV2(a);
+  if(v2)right.innerHTML=ecouteScoreHtml(a);
+  else if(a.note!==null&&a.note!==undefined)right.innerHTML='<div style="text-align:center;flex-shrink:0"><div style="font-size:22px;font-weight:700;color:'+sc(a.note*10)+'">'+a.note+'</div><div class="fs10 mu">/10</div></div>';
+  (opts.buttons||[]).forEach(function(b){
+    if(!b)return;
+    var btn=document.createElement('button');btn.className='btn btn-sm '+b.cls;btn.textContent=b.t;
+    btn.dataset.aid=a.id;btn.onclick=function(){b.fn(this.dataset.aid);};right.appendChild(btn);
+  });
+  chdr.appendChild(right);card.appendChild(chdr);
+  var body=document.createElement('div');
+  if(opts.collapsed){
+    var tg=document.createElement('button');tg.className='btn btn-o btn-sm';tg.textContent='Voir les reponses';
+    var inner=document.createElement('div');inner.style.display='none';inner.innerHTML=v2?ecouteBodyHtml(a):legacyAnalyseBodyHtml(a);
+    tg.onclick=function(){var o=inner.style.display==='none';inner.style.display=o?'block':'none';tg.textContent=o?'Masquer les reponses':'Voir les reponses';};
+    body.appendChild(tg);body.appendChild(inner);
+  }else{
+    body.innerHTML=v2?ecouteBodyHtml(a):legacyAnalyseBodyHtml(a);
+  }
+  card.appendChild(body);
+  return card;
+}
+
 function renderAssistantTab(cid,container){
   var analyses=(_st.analyses||[]).filter(function(a){return a.junior_id===cid;});
   var el=document.createElement('div');
   var hdr=document.createElement('div');hdr.className='flex jb ac mb3';
-  hdr.innerHTML='<div style="font-size:16px;font-weight:700;color:var(--n)">Mes analyses de RDV</div>';
+  hdr.innerHTML='<div style="font-size:16px;font-weight:700;color:var(--n)">Mes grilles d&#39;ecoute</div>';
   var newBtn=document.createElement('button');newBtn.className='btn btn-g btn-sm';
-  newBtn.textContent='+ Nouvelle analyse';newBtn.dataset.cid=cid;
+  newBtn.textContent='+ Nouvelle grille';newBtn.dataset.cid=cid;
   newBtn.onclick=function(){openAnalyseJuniorForm(this.dataset.cid,null);};
   hdr.appendChild(newBtn);el.appendChild(hdr);
+  var sum=ecouteSummaryHtml(cid);
+  if(sum){var sd=document.createElement('div');sd.innerHTML=sum;el.appendChild(sd);}
+  // Ecoutes a noter (quand je suis le senior observe)
+  var myIds=_ecouteMyIds(cid);
+  var aNoter=(_st.analyses||[]).filter(function(a){return myIds.indexOf(a.senior_id)>=0&&a.junior_id!==cid&&ecouteIsV2(a);})
+    .sort(function(x,y){var tx=ecouteTotals(x)?1:0,ty=ecouteTotals(y)?1:0;if(tx!==ty)return tx-ty;return(y.rdv_date||'').localeCompare(x.rdv_date||'');});
+  if(aNoter.length){
+    var pending=aNoter.filter(function(a){return !ecouteTotals(a);}).length;
+    var sh=document.createElement('div');sh.style.cssText='font-size:13px;font-weight:700;color:var(--n);margin:6px 0 10px';
+    sh.innerHTML='Ecoutes de mes RDV a noter'+(pending?' <span class="badge" style="background:var(--g);color:var(--n)">'+pending+' en attente</span>':'');
+    el.appendChild(sh);
+    aNoter.forEach(function(a){
+      el.appendChild(_ecouteCard(a,{showJunior:true,collapsed:true,buttons:[
+        {t:ecouteTotals(a)?'Modifier la note':'Noter',cls:ecouteTotals(a)?'btn-o':'btn-g',fn:function(aid){openNotationEcoute(aid);}}
+      ]}));
+    });
+    var sep=document.createElement('div');sep.style.cssText='font-size:13px;font-weight:700;color:var(--n);margin:18px 0 10px';
+    sep.textContent='Mes ecoutes';el.appendChild(sep);
+  }
   if(!analyses.length){
     var empty=document.createElement('div');empty.className='card';
     empty.style.cssText='text-align:center;padding:30px;color:var(--mu)';
-    empty.innerHTML='Aucune analyse pour le moment.<br><span style="font-size:11px">Observe un RDV d&#39;un conseiller senior et remplis ta premiere grille d&#39;analyse.</span>';
+    empty.innerHTML='Aucune grille pour le moment.<br><span style="font-size:11px">Ecoute un D0, un D1 ou un D2 d&#39;un conseiller senior et remplis ta grille juste apres.</span>';
     el.appendChild(empty);
   }else{
     analyses.forEach(function(a){
-      var seniorNm=seniorName(a.senior_id);
-      var card=document.createElement('div');card.className='card mb2';
-      var noteHtml=a.note!==null&&a.note!==undefined?'<div style="text-align:center;flex-shrink:0"><div style="font-size:24px;font-weight:700;color:'+sc(a.note*10)+'">'+a.note+'</div><div class="fs10 mu">/10</div></div>':'';
-      var chdr=document.createElement('div');chdr.className='flex jb ac mb2';
-      chdr.innerHTML='<div class="flex ac gap2"><span style="font-size:18px">&#128064;</span>'
-        +'<div><strong style="font-size:14px">RDV observe : '+seniorNm+'</strong>'
-        +'<div class="fs11 mu">'+(DB.rdv()[a.rdv_type]?DB.rdv()[a.rdv_type].label:a.rdv_type||'')+' — '+fd(a.rdv_date)+(a.dossier?' — Dossier : '+a.dossier:'')+'</div></div></div>';
-      var right=document.createElement('div');right.className='flex ac gap2';
-      right.innerHTML=noteHtml;
-      var editBtn=document.createElement('button');editBtn.className='btn btn-o btn-sm';editBtn.textContent='Modifier';
-      editBtn.dataset.aid=a.id;editBtn.dataset.cid=cid;
-      editBtn.onclick=function(){openAnalyseJuniorForm(this.dataset.cid,this.dataset.aid);};
-      right.appendChild(editBtn);
-      var delBtn=document.createElement('button');delBtn.className='btn btn-r btn-sm';delBtn.textContent='X';
-      delBtn.dataset.aid=a.id;delBtn.dataset.cid=cid;
-      delBtn.onclick=function(){deleteAnalyseJunior(this.dataset.aid,this.dataset.cid);};
-      right.appendChild(delBtn);
-      chdr.appendChild(right);card.appendChild(chdr);
-      var body=document.createElement('div');
-      var bh='';
-      if(a.commentaire_general)bh+='<div class="fs12 mb2" style="background:var(--gp);padding:8px;border-radius:var(--r)">'+a.commentaire_general+'</div>';
-      var grille=a.grille||{};
-      GRILLE_SECTIONS.forEach(function(sec){
-        var hasContent=sec.questions.some(function(q){return grille[q.id];});
-        if(!hasContent)return;
-        bh+='<div style="font-size:9px;text-transform:uppercase;color:var(--n);font-weight:700;margin:10px 0 5px;border-bottom:1px solid var(--gl);padding-bottom:3px">'+sec.titre+'</div>';
-        sec.questions.forEach(function(q){
-          if(grille[q.id])bh+='<div class="mb1"><span class="fs10 bold mu">'+q.lbl+' : </span><span class="fs12">'+grille[q.id]+'</span></div>';
-        });
-      });
-      if(a.commentaire_manager){
-        bh+='<div style="margin-top:10px;padding:10px;background:var(--bon-bg);border-left:3px solid var(--bon);border-radius:0 var(--r) var(--r) 0">'
-          +'<div class="fs10 bold" style="color:var(--bon);margin-bottom:3px">Commentaire de '+(a.manager_commentaire_by||'votre manager')+'</div>'
-          +'<div class="fs12">'+a.commentaire_manager+'</div></div>';
-      }
-      body.innerHTML=bh;card.appendChild(body);el.appendChild(card);
+      var locked=ecouteIsV2(a)&&!!ecouteTotals(a);
+      el.appendChild(_ecouteCard(a,{buttons:locked?[]:[
+        {t:'Modifier',cls:'btn-o',fn:function(aid){openAnalyseJuniorForm(cid,aid);}},
+        {t:'X',cls:'btn-r',fn:function(aid){deleteAnalyseJunior(aid,cid);}}
+      ]}));
     });
   }
   container.innerHTML='';container.appendChild(el);
 }
 
+function _ecouteOverlay(id,width){
+  var overlay=document.createElement('div');overlay.id=id;
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:600;display:flex;align-items:center;justify-content:center';
+  var box=document.createElement('div');
+  box.style.cssText='background:#fff;border-radius:12px;padding:24px;width:'+width+'px;max-width:96vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)';
+  overlay.appendChild(box);document.body.appendChild(overlay);
+  return{overlay:overlay,box:box};
+}
+function _ecouteSecTitle(t){return'<div style="font-size:11px;text-transform:uppercase;color:var(--n);font-weight:700;margin:18px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--gl)">'+t+'</div>';}
+
 function openAnalyseJuniorForm(cid,analyseId){
+  var existing=analyseId?(_st.analyses||[]).find(function(a){return a.id===analyseId;}):null;
+  if(existing&&!ecouteIsV2(existing)){openAnalyseJuniorFormLegacy(cid,analyseId);return;}
+  if(existing&&ecouteTotals(existing)){alert('Cette grille a deja ete notee, elle ne peut plus etre modifiee.');return;}
+  var g=existing?Object.assign({},existing.grille||{}):{};
+  var prev=(_st.analyses||[]).filter(function(a){return a.junior_id===cid&&ecouteIsV2(a)&&a.id!==analyseId&&a.grille.q7;})
+    .sort(function(x,y){return(y.rdv_date||'').localeCompare(x.rdv_date||'');})[0];
+  var rappel=existing?(g.q0_rappel||''):(prev?prev.grille.q7:'');
+  var observables=getObservablesList(cid);
+  var m=_ecouteOverlay('mod-analyse-junior',720);
+  var rdvSel=existing?existing.rdv_type:'d0';
+  var h='<div style="font-size:16px;font-weight:700;color:var(--n);margin-bottom:4px">'+(existing?'Modifier ma grille d&#39;ecoute':'Nouvelle grille d&#39;ecoute')+'</div>'
+    +'<div class="fs11 mu mb3">A remplir juste apres le RDV. Ta grille sera notee par le conseiller observe.</div>';
+  h+='<input type="hidden" id="aj-v2" value="1"><input type="hidden" id="aj-id" value="'+(analyseId||'')+'"><input type="hidden" id="aj-cid" value="'+cid+'">';
+  h+='<div class="g2 gap2 mb2">';
+  h+='<div><label class="lbl">Conseiller observe *</label><select id="aj-senior" style="width:100%"><option value="">— Selectionnez —</option>';
+  h+=observables.map(function(c){return'<option value="'+c.id+'"'+(existing&&existing.senior_id===c.id?' selected':'')+'>'+_ecTxt(c.name)+'</option>';}).join('');
+  h+='</select></div>';
+  h+='<div><label class="lbl">Type de RDV *</label><select id="aj-rdv" style="width:100%">';
+  h+=ECOUTE_RDV.map(function(r){return'<option value="'+r[0]+'"'+(rdvSel===r[0]?' selected':'')+'>'+r[1]+'</option>';}).join('');
+  h+='</select></div></div>';
+  h+='<div class="g2 gap2 mb2">';
+  h+='<div><label class="lbl">Date du RDV *</label><input type="date" id="aj-date" value="'+(existing&&existing.rdv_date?existing.rdv_date:new Date().toISOString().split('T')[0])+'" style="width:100%"></div>';
+  h+='<div><label class="lbl">Dossier (initiales du client)</label><input type="text" id="aj-dossier" value="'+_rhEsc(existing&&existing.dossier?existing.dossier:'')+'" placeholder="ex. J.D." style="width:100%"></div>';
+  h+='</div>';
+  if(rappel){
+    h+='<div style="background:var(--gp);border-left:3px solid var(--g);padding:10px;border-radius:0 var(--r) var(--r) 0;margin:10px 0">'
+      +'<div class="fs10 bold mu">Ton point technique a travailler la derniere fois</div><div class="fs12 mb1">'+_ecTxt(rappel)+'</div>'
+      +'<input type="hidden" id="aj-q0-rappel" value="'+_rhEsc(rappel)+'">'
+      +'<label class="lbl">Qu&#39;as-tu appris sur ce point depuis ?</label><textarea id="aj-q0" rows="2" style="width:100%;resize:vertical">'+_rhEsc(g.q0||'')+'</textarea></div>';
+  }
+  h+='<div id="aj-qs"></div>';
+  h+='<div style="display:flex;gap:10px;margin-top:16px">'
+    +'<button id="aj-save" style="flex:1;padding:12px;background:var(--g);color:var(--n);border:none;border-radius:var(--r);font-weight:700;cursor:pointer;font-family:inherit">Enregistrer</button>'
+    +'<button id="aj-cancel" style="padding:12px 18px;border:1px solid var(--bd);background:var(--ow);border-radius:var(--r);cursor:pointer;font-family:inherit">Annuler</button></div>';
+  m.box.innerHTML=h;
+  function grab(){
+    ECOUTE_BLOCS.forEach(function(b){b.q.forEach(function(q){var e=document.getElementById('aj-'+q);if(e)g[q]=e.value;});});
+    var cbs=document.querySelectorAll('#aj-qs input[data-lev]');
+    if(cbs.length){g.leviers=[];cbs.forEach(function(c){if(c.checked)g.leviers.push(c.dataset.lev);});}
+  }
+  function renderQs(){
+    grab();
+    var st=ecouteStage(document.getElementById('aj-rdv').value)||'d0';
+    var qh='';
+    ECOUTE_BLOCS.forEach(function(b){
+      qh+=_ecouteSecTitle(b.t);
+      if(b.id==='B'){
+        qh+='<div class="fs11 mu mb2">Attendu a ce stade : '+ECOUTE_ATTENDU[st]+'.</div>';
+        qh+='<label class="lbl">Leviers identifies dans le dossier</label><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:4px 12px;margin-bottom:10px">';
+        qh+=ECOUTE_LEVIERS.map(function(x){var on=(g.leviers||[]).indexOf(x.id)>=0;
+          return'<label class="fs12" style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" data-lev="'+x.id+'"'+(on?' checked':'')+'>'+x.l+'</label>';}).join('');
+        qh+='</div>';
+      }
+      b.q.forEach(function(q){
+        qh+='<div class="mb2"><label class="lbl">'+q.slice(1)+'. '+ecouteLbl(st,q)+'</label><textarea id="aj-'+q+'" rows="2" style="width:100%;resize:vertical">'+_rhEsc(g[q]||'')+'</textarea></div>';
+      });
+    });
+    document.getElementById('aj-qs').innerHTML=qh;
+  }
+  renderQs();
+  document.getElementById('aj-rdv').onchange=renderQs;
+  document.getElementById('aj-cancel').onclick=function(){document.body.removeChild(m.overlay);};
+  document.getElementById('aj-save').onclick=function(){saveEcouteJunior();};
+}
+
+async function saveEcouteJunior(){
+  var aid=document.getElementById('aj-id').value;
+  var cid=document.getElementById('aj-cid').value;
+  var seniorId=document.getElementById('aj-senior').value;
+  var rdvType=document.getElementById('aj-rdv').value;
+  var rdvDate=document.getElementById('aj-date').value;
+  if(!seniorId){alert('Selectionnez le conseiller observe.');return;}
+  if(!rdvDate){alert('La date est obligatoire.');return;}
+  var existing=aid?(_st.analyses||[]).find(function(a){return a.id===aid;}):null;
+  var g={v:2},vides=0;
+  ECOUTE_BLOCS.forEach(function(b){b.q.forEach(function(q){
+    var e=document.getElementById('aj-'+q);var v=e?e.value.trim():'';
+    if(v)g[q]=v;else vides++;
+  });});
+  g.leviers=[];
+  document.querySelectorAll('#aj-qs input[data-lev]').forEach(function(c){if(c.checked)g.leviers.push(c.dataset.lev);});
+  var r=document.getElementById('aj-q0-rappel');
+  if(r){g.q0_rappel=r.value;var q0=document.getElementById('aj-q0');if(q0&&q0.value.trim())g.q0=q0.value.trim();}
+  if(vides&&!confirm('Il reste '+vides+' question(s) sans reponse. Enregistrer quand meme ?'))return;
+  if(existing&&existing.grille&&existing.grille._notation)g._notation=existing.grille._notation;
+  var payload={
+    junior_id:cid,senior_id:seniorId,rdv_type:rdvType,rdv_date:rdvDate,
+    dossier:document.getElementById('aj-dossier').value.trim()||null,
+    grille:g,note:null,updated_at:new Date().toISOString()
+  };
+  var res=aid?await _sb.from('analyses_junior').update(payload).eq('id',aid):await _sb.from('analyses_junior').insert(payload);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  var overlay=document.getElementById('mod-analyse-junior');if(overlay)document.body.removeChild(overlay);
+  await sbLoad();
+  _ecouteRefresh();
+  toast('Grille enregistree',true);
+}
+
+function _ecouteRefresh(){
+  var tabContent=document.getElementById('cons-assistant-content');
+  if(tabContent&&_conseillerSession)renderAssistantTab(_conseillerSession.id,tabContent);
+  var ft=document.getElementById('fiche-title'),fs=document.getElementById('fiche-suivi-content');
+  if(ft&&ft.dataset.cid&&fs&&fs.style.display!=='none'&&fs.dataset.view==='analyses')renderFicheAnalyses(ft.dataset.cid);
+}
+function _ecouteNotateur(){
+  if(_role==='conseiller'&&_conseillerSession)return _conseillerSession.name;
+  return _curMgr()||'Manager';
+}
+
+function openNotationEcoute(aid){
+  var a=(_st.analyses||[]).find(function(x){return x.id===aid;});if(!a)return;
+  var g=a.grille||{},st=ecouteStage(a.rdv_type)||'d0',n=g._notation||{scores:{}};
+  var jn=(_st.conseillers.find(function(c){return c.id===a.junior_id;})||{}).name||'?';
+  var m=_ecouteOverlay('mod-notation-ecoute',760);
+  var h='<div style="font-size:16px;font-weight:700;color:var(--n);margin-bottom:4px">Noter la grille de '+_ecTxt(jn)+'</div>'
+    +'<div class="fs11 mu">'+ecouteRdvLbl(a)+' du '+fd(a.rdv_date)+(a.dossier?' — Dossier : '+_ecTxt(a.dossier):'')+'</div>'
+    +'<div class="fs11" style="background:var(--ow);border:1px solid var(--bd);border-radius:var(--r);padding:8px;margin:12px 0">'
+    +'<span class="bold">Bareme : </span>0 = absent ou faux · 1 = vague, il a vu sans comprendre · 2 = juste et precis · 3 = juste, precis et il explique le pourquoi'
+    +'<br><span class="bold">Seuils sur 36 : </span>29 et plus = compris · 18 a 28 = en cours · moins de 18 = a revoir</div>';
+  h+=ecouteRappelHtml(g);
+  ECOUTE_BLOCS.forEach(function(b){
+    h+='<div style="display:flex;justify-content:space-between;font-size:11px;text-transform:uppercase;color:var(--n);font-weight:700;margin:18px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--gl)"><span>'+b.t+'</span><span id="ne-b-'+b.id+'"></span></div>';
+    if(b.id==='B')h+=ecouteLeviersHtml(g);
+    b.q.forEach(function(q){
+      var v=n.scores&&n.scores[q]!==undefined?String(n.scores[q]):'';
+      h+='<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:10px"><div style="flex:1">'
+        +'<div class="fs10 bold mu">'+q.slice(1)+'. '+ecouteLbl(st,q)+'</div>'
+        +'<div class="fs12" style="background:var(--ow);border-radius:var(--r);padding:6px 8px;margin-top:2px">'+(g[q]?_ecTxt(g[q]):'<span class="mu">Pas de reponse</span>')+'</div></div>'
+        +'<select id="ne-'+q+'" data-q="'+q+'" style="width:70px;flex-shrink:0"><option value="">--</option>'
+        +[0,1,2,3].map(function(k){return'<option value="'+k+'"'+(v===String(k)?' selected':'')+'>'+k+'</option>';}).join('')
+        +'</select></div>';
+    });
+  });
+  h+=_ecouteSecTitle('Debrief');
+  h+='<textarea id="ne-cmt" rows="3" style="width:100%;resize:vertical" placeholder="Ce qu&#39;il a bien compris, ce qu&#39;il doit retravailler avant la prochaine ecoute">'+_rhEsc(n.commentaire||'')+'</textarea>';
+  h+='<div id="ne-total" style="margin-top:12px;font-weight:700;color:var(--n)"></div>';
+  h+='<div style="display:flex;gap:10px;margin-top:12px">'
+    +'<button id="ne-save" style="flex:1;padding:12px;background:var(--g);color:var(--n);border:none;border-radius:var(--r);font-weight:700;cursor:pointer;font-family:inherit">Enregistrer la note</button>'
+    +'<button id="ne-cancel" style="padding:12px 18px;border:1px solid var(--bd);background:var(--ow);border-radius:var(--r);cursor:pointer;font-family:inherit">Annuler</button></div>';
+  m.box.innerHTML=h;
+  function upd(){
+    var tot=0,done=0;
+    ECOUTE_BLOCS.forEach(function(b){
+      var s=0;b.q.forEach(function(q){var v=document.getElementById('ne-'+q).value;if(v!==''){s+=parseInt(v,10);done++;}});
+      tot+=s;document.getElementById('ne-b-'+b.id).textContent=s+' / '+(b.q.length*3);
+    });
+    var stt=done===12?ecouteStatut({total:tot}):null;
+    document.getElementById('ne-total').innerHTML='Total : '+tot+' / 36'+(stt?' <span class="badge" style="background:'+stt.bg+';color:'+stt.c+'">'+stt.l+'</span>':' <span class="fs11 mu">('+done+'/12 questions notees)</span>');
+  }
+  m.box.querySelectorAll('select[data-q]').forEach(function(s){s.onchange=upd;});
+  upd();
+  document.getElementById('ne-cancel').onclick=function(){document.body.removeChild(m.overlay);};
+  document.getElementById('ne-save').onclick=function(){saveNotationEcoute(aid);};
+}
+
+async function saveNotationEcoute(aid){
+  var a=(_st.analyses||[]).find(function(x){return x.id===aid;});if(!a)return;
+  var scores={},manque=0;
+  ECOUTE_BLOCS.forEach(function(b){b.q.forEach(function(q){
+    var v=document.getElementById('ne-'+q).value;if(v==='')manque++;else scores[q]=parseInt(v,10);
+  });});
+  if(manque){alert('Notez les 12 questions ('+manque+' restante(s)).');return;}
+  var g=Object.assign({},a.grille||{});
+  g._notation={scores:scores,commentaire:document.getElementById('ne-cmt').value.trim(),by:_ecouteNotateur(),at:new Date().toISOString()};
+  var res=await _sb.from('analyses_junior').update({grille:g,updated_at:new Date().toISOString()}).eq('id',aid);
+  if(res.error){alert('Erreur: '+res.error.message);return;}
+  var o=document.getElementById('mod-notation-ecoute');if(o)document.body.removeChild(o);
+  await sbLoad();
+  _ecouteRefresh();
+  toast('Note enregistree',true);
+}
+
+function openAnalyseJuniorFormLegacy(cid,analyseId){
   var existing=analyseId?(_st.analyses||[]).find(function(a){return a.id===analyseId;}):null;
   var grille=existing?existing.grille||{}:{};
   var observables=getObservablesList(cid);
@@ -3031,56 +3405,41 @@ function renderFicheAnalyses(cid){
   var c=_st.conseillers.find(function(x){return x.id===cid;});if(!c)return;
   var analyses=(_st.analyses||[]).filter(function(a){return a.junior_id===cid;});
   var el=document.getElementById('fiche-suivi-content');if(!el)return;
+  el.dataset.view='analyses';
   var container=document.createElement('div');
   var hdr=document.createElement('div');hdr.className='flex jb ac mb3';
-  hdr.innerHTML='<div style="font-size:16px;font-weight:700;color:var(--n)">Analyses de RDV — '+c.name+'</div>'
-    +'<span class="fs11 mu">'+analyses.length+' analyse'+(analyses.length>1?'s':'')+'</span>';
+  hdr.innerHTML='<div style="font-size:16px;font-weight:700;color:var(--n)">Grilles d&#39;ecoute — '+_ecTxt(c.name)+'</div>'
+    +'<span class="fs11 mu">'+analyses.length+' grille'+(analyses.length>1?'s':'')+'</span>';
   container.appendChild(hdr);
+  var sum=ecouteSummaryHtml(cid);
+  if(sum){var sd=document.createElement('div');sd.innerHTML=sum;container.appendChild(sd);}
   if(!analyses.length){
     var empty=document.createElement('div');empty.className='card';
     empty.style.cssText='text-align:center;padding:30px;color:var(--mu)';
-    empty.textContent='Aucune analyse redigee par ce conseiller.';
+    empty.textContent='Aucune grille d ecoute redigee par ce conseiller.';
     container.appendChild(empty);
   }else{
     analyses.forEach(function(a){
-      var seniorNm=seniorName(a.senior_id);
-      var card=document.createElement('div');card.className='card mb2';
-      var noteHtml=a.note!==null&&a.note!==undefined?'<div style="text-align:center"><div style="font-size:22px;font-weight:700;color:'+sc(a.note*10)+'">'+a.note+'</div><div class="fs10 mu">/10</div></div>':'';
-      var chdr=document.createElement('div');chdr.className='flex jb ac mb2';
-      chdr.innerHTML='<div><strong style="font-size:14px">RDV observe : '+seniorNm+'</strong>'
-        +'<div class="fs11 mu">'+(DB.rdv()[a.rdv_type]?DB.rdv()[a.rdv_type].label:a.rdv_type||'')+' — '+fd(a.rdv_date)+(a.dossier?' — '+a.dossier:'')+' — redige le '+fd(a.created_at)+'</div></div>';
-      var hdrRight=document.createElement('div');hdrRight.innerHTML=noteHtml;
-      chdr.appendChild(hdrRight);card.appendChild(chdr);
-      var body=document.createElement('div');
-      var bh='';
-      if(a.commentaire_general)bh+='<div class="fs12 mb2" style="background:var(--gp);padding:8px;border-radius:var(--r)">'+a.commentaire_general+'</div>';
-      var grille=a.grille||{};
-      GRILLE_SECTIONS.forEach(function(sec){
-        var hasContent=sec.questions.some(function(q){return grille[q.id];});
-        if(!hasContent)return;
-        bh+='<div style="font-size:9px;text-transform:uppercase;color:var(--n);font-weight:700;margin:10px 0 5px;border-bottom:1px solid var(--gl);padding-bottom:3px">'+sec.titre+'</div>';
-        sec.questions.forEach(function(q){
-          if(grille[q.id])bh+='<div class="mb1"><span class="fs10 bold mu">'+q.lbl+' : </span><span class="fs12">'+grille[q.id]+'</span></div>';
-        });
-      });
-      body.innerHTML=bh;card.appendChild(body);
-      // Manager comment section
-      var cmtDiv=document.createElement('div');
-      cmtDiv.style.cssText='margin-top:12px;padding-top:12px;border-top:1px solid var(--bd)';
-      if(a.commentaire_manager){
-        cmtDiv.innerHTML='<div style="padding:10px;background:var(--bon-bg);border-left:3px solid var(--bon);border-radius:0 var(--r) var(--r) 0;margin-bottom:8px">'
-          +'<div class="fs10 bold" style="color:var(--bon);margin-bottom:3px">Commentaire de '+(a.manager_commentaire_by||'manager')+'</div>'
-          +'<div class="fs12">'+a.commentaire_manager+'</div></div>';
+      var v2=ecouteIsV2(a);
+      var card=_ecouteCard(a,{buttons:v2?[{t:ecouteTotals(a)?'Modifier la note':'Noter',cls:ecouteTotals(a)?'btn-o':'btn-g',fn:function(aid){openNotationEcoute(aid);}}]:[]});
+      if(!v2){
+        var cmtDiv=document.createElement('div');
+        cmtDiv.style.cssText='margin-top:12px;padding-top:12px;border-top:1px solid var(--bd)';
+        if(a.commentaire_manager){
+          cmtDiv.innerHTML='<div style="padding:10px;background:var(--bon-bg);border-left:3px solid var(--bon);border-radius:0 var(--r) var(--r) 0;margin-bottom:8px">'
+            +'<div class="fs10 bold" style="color:var(--bon);margin-bottom:3px">Commentaire de '+_ecTxt(a.manager_commentaire_by||'manager')+'</div>'
+            +'<div class="fs12">'+_ecTxt(a.commentaire_manager)+'</div></div>';
+        }
+        var cmtForm=document.createElement('div');cmtForm.className='flex gap1';
+        var cmtInput=document.createElement('input');
+        cmtInput.type='text';cmtInput.placeholder=a.commentaire_manager?'Modifier le commentaire...':'Ajouter un commentaire...';
+        cmtInput.style.cssText='flex:1;font-size:12px';cmtInput.id='mgr-cmt-'+a.id;
+        var cmtBtn=document.createElement('button');cmtBtn.className='btn btn-n btn-sm';cmtBtn.textContent='Commenter';
+        cmtBtn.dataset.aid=a.id;cmtBtn.dataset.cid=cid;
+        cmtBtn.onclick=function(){saveManagerComment(this.dataset.aid,this.dataset.cid);};
+        cmtForm.appendChild(cmtInput);cmtForm.appendChild(cmtBtn);
+        cmtDiv.appendChild(cmtForm);card.appendChild(cmtDiv);
       }
-      var cmtForm=document.createElement('div');cmtForm.className='flex gap1';
-      var cmtInput=document.createElement('input');
-      cmtInput.type='text';cmtInput.placeholder=a.commentaire_manager?'Modifier le commentaire...':'Ajouter un commentaire...';
-      cmtInput.style.cssText='flex:1;font-size:12px';cmtInput.id='mgr-cmt-'+a.id;
-      var cmtBtn=document.createElement('button');cmtBtn.className='btn btn-n btn-sm';cmtBtn.textContent='Commenter';
-      cmtBtn.dataset.aid=a.id;cmtBtn.dataset.cid=cid;
-      cmtBtn.onclick=function(){saveManagerComment(this.dataset.aid,this.dataset.cid);};
-      cmtForm.appendChild(cmtInput);cmtForm.appendChild(cmtBtn);
-      cmtDiv.appendChild(cmtForm);card.appendChild(cmtDiv);
       container.appendChild(card);
     });
   }
