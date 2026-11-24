@@ -2974,11 +2974,7 @@ function ecouteBodyHtml(a){
         +(v!==null?'<div style="flex-shrink:0;font-weight:700;font-size:13px;color:var(--n)">'+v+'/3</div>':'')+'</div>';
     });
   });
-  if(n&&n.commentaire){
-    h+='<div style="margin-top:12px;padding:10px;background:var(--bon-bg);border-left:3px solid var(--bon);border-radius:0 var(--r) var(--r) 0">'
-      +'<div class="fs10 bold" style="color:var(--bon);margin-bottom:3px">Debrief de '+_ecTxt(n.by||'')+(n.at?' — '+fd(n.at):'')+'</div>'
-      +'<div class="fs12">'+_ecTxt(n.commentaire)+'</div></div>';
-  }else if(n&&n.by){
+  if(n&&n.by){
     h+='<div class="fs10 mu" style="margin-top:8px">Note par '+_ecTxt(n.by)+(n.at?' le '+fd(n.at):'')+'</div>';
   }
   return h;
@@ -2997,11 +2993,11 @@ function legacyAnalyseBodyHtml(a){
   });
   return bh;
 }
-function ecouteSummaryHtml(cid){
+function ecouteSummaryHtml(cid,noTitle){
   var list=(_st.analyses||[]).filter(function(a){return a.junior_id===cid&&ecouteIsV2(a);});
   if(!list.length)return'';
   var byDate=function(x,y){return(x.rdv_date||'').localeCompare(y.rdv_date||'');};
-  var h='<div class="card mb3"><div style="font-size:11px;font-weight:700;color:var(--n);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Grilles d&#39;ecoute</div>'
+  var h='<div class="card mb3">'+(noTitle?'':'<div style="font-size:11px;font-weight:700;color:var(--n);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Grilles d&#39;ecoute</div>')
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px">';
   [['d0','D0 Etude'],['d1','D1 Solution'],['d2','D2 Closing']].forEach(function(p){
     var l=list.filter(function(a){return ecouteStage(a.rdv_type)===p[0];});
@@ -3021,12 +3017,19 @@ function ecouteSummaryHtml(cid){
       return{t:b.t,p:m?Math.round(s/m*100):0};
     });
     var low=pcts.slice().sort(function(x,y){return x.p-y.p;})[0];
-    h+='<div class="fs11" style="margin-top:10px;color:var(--tx)"><span class="bold">Moyenne par bloc : </span>'
-      +pcts.map(function(x){return x.t+' '+x.p+'%';}).join(' · ')
-      +'<br><span class="bold">A travailler en priorite : </span>'+low.t+'</div>';
+    h+='<div style="margin-top:14px">';
+    pcts.forEach(function(x){
+      var col=x.p>=80?'var(--tb)':x.p>=50?'var(--moy)':'var(--crit)';
+      h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
+        +'<div class="fs11" style="width:170px;flex-shrink:0;color:var(--n)">'+x.t+'</div>'
+        +'<div style="flex:1;height:8px;background:var(--ow);border-radius:4px;overflow:hidden"><div style="width:'+x.p+'%;height:100%;background:'+col+'"></div></div>'
+        +'<div class="fs11 bold" style="width:40px;text-align:right">'+x.p+'%</div>'
+        +(x===low?'<span class="badge" style="background:var(--crit-bg);color:var(--crit)">A travailler</span>':'<span style="width:78px"></span>')+'</div>';
+    });
+    h+='</div>';
   }
   var lastQ7=list.filter(function(a){return a.grille.q7;}).sort(byDate).pop();
-  if(lastQ7)h+='<div class="fs11" style="margin-top:6px"><span class="bold">Dernier point technique a travailler : </span>'+_ecTxt(lastQ7.grille.q7)+'</div>';
+  if(lastQ7)h+='<div class="fs12" style="margin-top:10px;background:var(--gp);border-left:3px solid var(--g);padding:8px 10px;border-radius:0 var(--r) var(--r) 0"><span class="fs10 bold mu">POINT TECHNIQUE EN COURS : </span>'+_ecTxt(lastQ7.grille.q7)+'</div>';
   h+='</div>';
   return h;
 }
@@ -3037,12 +3040,12 @@ function _ecouteMyIds(cid){
 }
 function _ecouteCard(a,opts){
   var card=document.createElement('div');card.className='card mb2';
-  var chdr=document.createElement('div');chdr.className='flex jb ac mb2';
+  var chdr=document.createElement('div');chdr.className='flex jb ac mb2';chdr.style.cssText='flex-wrap:wrap;gap:10px';
   var who=opts.showJunior?((_st.conseillers.find(function(c){return c.id===a.junior_id;})||{}).name||'?'):seniorName(a.senior_id);
   chdr.innerHTML='<div class="flex ac gap2"><span style="font-size:18px">&#128064;</span><div><strong style="font-size:14px">'
     +(opts.showJunior?'Ecoute de '+_ecTxt(who):'RDV observe : '+_ecTxt(who))+'</strong>'
     +'<div class="fs11 mu">'+ecouteRdvLbl(a)+' — '+fd(a.rdv_date)+(a.dossier?' — Dossier : '+_ecTxt(a.dossier):'')+'</div></div></div>';
-  var right=document.createElement('div');right.className='flex ac gap2';
+  var right=document.createElement('div');right.className='flex ac gap2';right.style.marginLeft='auto';
   var v2=ecouteIsV2(a);
   if(v2)right.innerHTML=ecouteScoreHtml(a);
   else if(a.note!==null&&a.note!==undefined)right.innerHTML='<div style="text-align:center;flex-shrink:0"><div style="font-size:22px;font-weight:700;color:'+sc(a.note*10)+'">'+a.note+'</div><div class="fs10 mu">/10</div></div>';
@@ -3053,7 +3056,21 @@ function _ecouteCard(a,opts){
   });
   chdr.appendChild(right);card.appendChild(chdr);
   var body=document.createElement('div');
-  if(opts.collapsed){
+  var tt=v2?ecouteTotals(a):null,nn=v2?(a.grille||{})._notation:null;
+  if(tt){
+    var line=document.createElement('div');line.className='fs11 mb2';line.style.cssText='display:flex;flex-wrap:wrap;gap:6px';
+    line.innerHTML=ECOUTE_BLOCS.map(function(b){var x=tt.blocs[b.id];var p=x.s/x.max;
+      var c=p>=0.8?'var(--tb)':p>=0.5?'var(--moy)':'var(--crit)',bg=p>=0.8?'var(--tb-bg)':p>=0.5?'var(--moy-bg)':'var(--crit-bg)';
+      return'<span style="background:'+bg+';color:'+c+';border-radius:4px;padding:2px 8px;font-weight:700">'+b.t.replace(/^[A-D]\. /,'')+' '+x.s+'/'+x.max+'</span>';}).join('');
+    body.appendChild(line);
+  }
+  if(nn&&nn.commentaire){
+    var db=document.createElement('div');
+    db.style.cssText='padding:8px 10px;background:var(--bon-bg);border-left:3px solid var(--bon);border-radius:0 var(--r) var(--r) 0;margin-bottom:8px';
+    db.innerHTML='<div class="fs10 bold" style="color:var(--bon);margin-bottom:2px">Debrief de '+_ecTxt(nn.by||'')+'</div><div class="fs12">'+_ecTxt(nn.commentaire)+'</div>';
+    body.appendChild(db);
+  }
+  if(opts.collapsed||v2){
     var tg=document.createElement('button');tg.className='btn btn-o btn-sm';tg.textContent='Voir les reponses';
     var inner=document.createElement('div');inner.style.display='none';inner.innerHTML=v2?ecouteBodyHtml(a):legacyAnalyseBodyHtml(a);
     tg.onclick=function(){var o=inner.style.display==='none';inner.style.display=o?'block':'none';tg.textContent=o?'Masquer les reponses':'Voir les reponses';};
@@ -3070,11 +3087,12 @@ function renderAssistantTab(cid,container){
   var el=document.createElement('div');
   var hdr=document.createElement('div');hdr.className='flex jb ac mb3';
   hdr.innerHTML='<div style="font-size:16px;font-weight:700;color:var(--n)">Mes grilles d&#39;ecoute</div>';
+  var _noT=true;
   var newBtn=document.createElement('button');newBtn.className='btn btn-g btn-sm';
   newBtn.textContent='+ Nouvelle grille';newBtn.dataset.cid=cid;
   newBtn.onclick=function(){openAnalyseJuniorForm(this.dataset.cid,null);};
   hdr.appendChild(newBtn);el.appendChild(hdr);
-  var sum=ecouteSummaryHtml(cid);
+  var sum=ecouteSummaryHtml(cid,_noT);
   if(sum){var sd=document.createElement('div');sd.innerHTML=sum;el.appendChild(sd);}
   // Ecoutes a noter (quand je suis le senior observe)
   var myIds=_ecouteMyIds(cid);
@@ -3411,7 +3429,7 @@ function renderFicheAnalyses(cid){
   hdr.innerHTML='<div style="font-size:16px;font-weight:700;color:var(--n)">Grilles d&#39;ecoute — '+_ecTxt(c.name)+'</div>'
     +'<span class="fs11 mu">'+analyses.length+' grille'+(analyses.length>1?'s':'')+'</span>';
   container.appendChild(hdr);
-  var sum=ecouteSummaryHtml(cid);
+  var sum=ecouteSummaryHtml(cid,true);
   if(sum){var sd=document.createElement('div');sd.innerHTML=sum;container.appendChild(sd);}
   if(!analyses.length){
     var empty=document.createElement('div');empty.className='card';
